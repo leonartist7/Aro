@@ -1,0 +1,434 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  TextInput,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  Image,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import * as Haptics from "expo-haptics";
+import { api, Message, User } from "../../src/api";
+import { colors, fonts, radius, spacing } from "../../src/theme";
+import Avatar from "../../src/Avatar";
+import { useAuth } from "../../src/AuthContext";
+import { VoiceMessageBubble, FilePreviewCard } from "../../src/MessageParts";
+
+export default function ChatScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { user } = useAuth();
+  const [chatInfo, setChatInfo] = useState<{ other: User | null } | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordSec, setRecordSec] = useState(0);
+  const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const listRef = useRef<FlatList<Message>>(null);
+
+  const load = useCallback(async () => {
+    if (!id) return;
+    try {
+      const [info, msgs] = await Promise.all([
+        api.get<{ other: User | null }>(`/chats/${id}`),
+        api.get<Message[]>(`/chats/${id}/messages`),
+      ]);
+      setChatInfo(info);
+      setMessages(msgs);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Lightweight polling for new messages
+  useEffect(() => {
+    const t = setInterval(load, 4000);
+    return () => clearInterval(t);
+  }, [load]);
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
+    }
+  }, [messages.length]);
+
+  async function send(payload: any) {
+    setSending(true);
+    try {
+      const m = await api.post<Message>(`/chats/${id}/messages`, payload);
+      setMessages((prev) => [...prev, m]);
+    } catch (e) {
+      // ignore for now
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendText() {
+    const t = text.trim();
+    if (!t) return;
+    setText("");
+    await send({ chat_id: id, type: "text", text: t });
+  }
+
+  async function attachImage() {
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        base64: true,
+        quality: 0.6,
+      });
+      if (res.canceled || !res.assets?.[0]) return;
+      const a = res.assets[0];
+      const dataUrl = a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri;
+      await send({
+        chat_id: id,
+        type: "image",
+        media: dataUrl,
+        file_name: a.fileName || "image.jpg",
+        file_size: a.fileSize || null,
+      });
+    } catch {}
+  }
+
+  async function attachFile() {
+    try {
+      const res = await DocumentPicker.getDocumentAsync({ multiple: false });
+      if (res.canceled || !res.assets?.[0]) return;
+      const a = res.assets[0];
+      await send({
+        chat_id: id,
+        type: "file",
+        file_name: a.name,
+        file_size: a.size || null,
+      });
+    } catch {}
+  }
+
+  function startRecording() {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setRecording(true);
+    setRecordSec(0);
+    recordTimer.current = setInterval(() => setRecordSec((s) => s + 1), 1000);
+  }
+
+  async function stopRecording(cancel = false) {
+    if (recordTimer.current) clearInterval(recordTimer.current);
+    const sec = recordSec;
+    setRecording(false);
+    setRecordSec(0);
+    if (cancel || sec < 1) return;
+    await send({
+      chat_id: id,
+      type: "voice",
+      duration_ms: sec * 1000,
+    });
+  }
+
+  return (
+    <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+      <View style={styles.header}>
+        <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="chat-back">
+          <Ionicons name="chevron-back" size={22} color={colors.text} />
+        </Pressable>
+        <View style={styles.headerCenter}>
+          <Avatar name={chatInfo?.other?.name} seed={chatInfo?.other?.id} size={36} />
+          <View>
+            <Text style={styles.headerName} numberOfLines={1}>
+              {chatInfo?.other?.name || "Chat"}
+            </Text>
+            <Text style={styles.headerSub}>quietly online</Text>
+          </View>
+        </View>
+        <Pressable
+          onPress={() => chatInfo?.other && router.push(`/call/${chatInfo.other.id}`)}
+          style={styles.iconBtn}
+          testID="chat-call"
+        >
+          <Ionicons name="call-outline" size={20} color={colors.primaryDark} />
+        </Pressable>
+      </View>
+
+      {/* Phase 2 Spaces placeholder */}
+      <Pressable style={styles.spacesPill} testID="shared-space-pill">
+        <Ionicons name="sparkles-outline" size={14} color={colors.textSecondary} />
+        <Text style={styles.spacesText}>Start a shared space</Text>
+        <Text style={styles.spacesSoon}>soon</Text>
+      </Pressable>
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+        style={{ flex: 1 }}
+      >
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : (
+          <FlatList
+            ref={listRef}
+            data={messages}
+            keyExtractor={(m) => m.id}
+            contentContainerStyle={styles.msgList}
+            renderItem={({ item }) => (
+              <MessageRow msg={item} mine={item.sender_id === user?.id} />
+            )}
+            onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: false })}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Text style={styles.emptyText}>Say something gentle.</Text>
+              </View>
+            }
+          />
+        )}
+
+        {recording ? (
+          <View style={styles.recordBar}>
+            <View style={styles.recordDot} />
+            <Text style={styles.recordText}>
+              Recording  ·  0:{recordSec.toString().padStart(2, "0")}
+            </Text>
+            <Pressable onPress={() => stopRecording(true)} style={styles.recordCancel}>
+              <Text style={styles.recordCancelText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => stopRecording(false)}
+              style={styles.recordSend}
+              testID="voice-send"
+            >
+              <Ionicons name="send" size={16} color={colors.textInverse} />
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.composer}>
+            <Pressable onPress={attachFile} style={styles.attachBtn} testID="attach-file">
+              <Ionicons name="add" size={22} color={colors.text} />
+            </Pressable>
+            <Pressable onPress={attachImage} style={styles.attachBtn} testID="attach-image">
+              <Ionicons name="image-outline" size={20} color={colors.text} />
+            </Pressable>
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              placeholder="Message"
+              placeholderTextColor={colors.textTertiary}
+              style={styles.input}
+              multiline
+              testID="message-input"
+            />
+            {text.trim().length > 0 ? (
+              <Pressable
+                onPress={sendText}
+                disabled={sending}
+                style={styles.sendBtn}
+                testID="send-button"
+              >
+                <Ionicons name="arrow-up" size={20} color={colors.textInverse} />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPressIn={startRecording}
+                onPressOut={() => stopRecording(false)}
+                style={styles.sendBtn}
+                testID="mic-button"
+              >
+                <Ionicons name="mic-outline" size={20} color={colors.textInverse} />
+              </Pressable>
+            )}
+          </View>
+        )}
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+function MessageRow({ msg, mine }: { msg: Message; mine: boolean }) {
+  const bubbleStyle = [
+    styles.bubble,
+    mine
+      ? { backgroundColor: colors.surfaceElevated, borderBottomRightRadius: 4 }
+      : { backgroundColor: colors.surface, borderBottomLeftRadius: 4 },
+  ];
+  return (
+    <View style={[styles.msgRow, mine ? styles.msgRight : styles.msgLeft]}>
+      <View style={bubbleStyle}>
+        {msg.type === "text" && (
+          <Text style={styles.msgText}>{msg.text}</Text>
+        )}
+        {msg.type === "voice" && (
+          <VoiceMessageBubble durationMs={msg.duration_ms || 0} outgoing={mine} />
+        )}
+        {msg.type === "image" && msg.media ? (
+          <Image
+            source={{ uri: msg.media }}
+            style={styles.imageMsg}
+            resizeMode="cover"
+          />
+        ) : msg.type === "image" ? (
+          <FilePreviewCard fileName={msg.file_name} fileSize={msg.file_size} type="image" />
+        ) : null}
+        {msg.type === "file" && (
+          <FilePreviewCard fileName={msg.file_name} fileSize={msg.file_size} type="file" />
+        )}
+        <Text style={styles.msgTime}>
+          {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    gap: spacing.sm,
+  },
+  headerCenter: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  headerName: { fontFamily: fonts.heading, fontSize: 18, color: colors.text },
+  headerSub: { fontFamily: fonts.body, fontSize: 11, color: colors.textTertiary, marginTop: 2 },
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surface,
+  },
+  spacesPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: "dashed",
+    marginVertical: spacing.sm,
+  },
+  spacesText: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary },
+  spacesSoon: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 10,
+    color: colors.primary,
+    backgroundColor: colors.primaryBgSubtle,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    overflow: "hidden",
+    marginLeft: 2,
+  },
+  msgList: { padding: spacing.md, gap: spacing.sm, paddingBottom: spacing.lg },
+  msgRow: { flexDirection: "row", marginBottom: spacing.sm },
+  msgLeft: { justifyContent: "flex-start" },
+  msgRight: { justifyContent: "flex-end" },
+  bubble: {
+    maxWidth: "80%",
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+  msgText: { fontFamily: fonts.body, fontSize: 15, color: colors.text, lineHeight: 22 },
+  msgTime: {
+    fontFamily: fonts.body,
+    fontSize: 10,
+    color: colors.textTertiary,
+    marginTop: 4,
+    alignSelf: "flex-end",
+  },
+  imageMsg: {
+    width: 220,
+    height: 220,
+    borderRadius: 16,
+    backgroundColor: colors.primaryBgSubtle,
+  },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.bg,
+  },
+  attachBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  input: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 120,
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    paddingHorizontal: spacing.md,
+    paddingTop: 10,
+    paddingBottom: 10,
+    fontFamily: fonts.body,
+    fontSize: 15,
+    color: colors.text,
+  },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  recordBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    padding: spacing.md,
+    backgroundColor: colors.surface,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  recordDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.error },
+  recordText: { flex: 1, fontFamily: fonts.bodyMedium, color: colors.text },
+  recordCancel: { paddingHorizontal: 10, paddingVertical: 6 },
+  recordCancelText: { color: colors.textSecondary, fontFamily: fonts.bodyMedium },
+  recordSend: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  empty: { alignItems: "center", padding: spacing.xl },
+  emptyText: { fontFamily: fonts.body, color: colors.textSecondary },
+});
