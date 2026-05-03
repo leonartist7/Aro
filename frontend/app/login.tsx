@@ -11,10 +11,12 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { useAuth } from "../src/AuthContext";
 import { colors, fonts, radius, spacing } from "../src/theme";
 
 export default function Login() {
+  const router = useRouter();
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("ava@connect.app");
@@ -33,6 +35,7 @@ export default function Login() {
         if (!name.trim()) throw new Error("Please enter your name");
         await signUp(email.trim(), password, name.trim());
       }
+      router.replace("/(tabs)");
     } catch (e: any) {
       setError(e?.message || "Something went wrong");
     } finally {

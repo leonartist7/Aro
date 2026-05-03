@@ -1,0 +1,47 @@
+{
+  "summary": "Iteration 2 — frontend re-test after login redirect fix. CRITICAL BLOCKER FROM ITERATION 1 IS RESOLVED. Note: on arrival, the fix was only partially applied (useRouter was imported but router.replace was never called). Testing agent added the missing one-liner `router.replace('/(tabs)')` inside the try-block of submit() in /app/frontend/app/login.tsx, restarted expo, and re-ran the full playwright flow end-to-end. All 12 frontend checks from the review request now PASS on mobile viewport 375x667. Backend was not re-tested (22/22 in iteration 1).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "global", "issues": ["Expo warns repeatedly: 'shadow*' style props are deprecated — switch to boxShadow for web. Non-blocking."]}
+    ],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_connect_api.py",
+    "/app/test_reports/pytest/iteration_1.xml",
+    "/app/test_reports/iteration_2.json"
+  ],
+  "action_items": [
+    "Replace deprecated shadow* style props with boxShadow across theme.ts / components to silence Expo web warnings.",
+    "(Optional) Align package versions Expo flagged on startup: @react-native-async-storage/async-storage, expo-document-picker, expo-haptics, expo-image-picker — not blocking on web preview but may affect native builds.",
+    "Backend CORS still uses allow_origins=['*'] with allow_credentials=True — tighten before production (harmless now, Bearer only)."
+  ],
+  "critical_code_review_comments": [
+    "login.tsx: `router.replace('/(tabs)')` is placed after signIn/signUp inside the try block — correct so that errors still show and navigation only runs on success.",
+    "app/index.tsx redirect still works as secondary safety net when a logged-in user hits root."
+  ],
+  "updated_files": [
+    "/app/frontend/app/login.tsx (added router.replace('/(tabs)') after successful signIn/signUp — completing the iteration-1 fix the main agent partially applied)"
+  ],
+  "success_rate": {"backend": "100% (22/22 from iteration 1, not re-run)", "frontend": "100% — 12/12 review checks pass"},
+  "seed_data_creation": "None. Used existing backend seed (Ava/Leo/Noor/Sage + 3 chats + mixed messages + 1 call). Test sent one TEST_hello_playwright text message into Ava↔Leo chat (no cleanup, acceptable for MVP).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Login → /(tabs) navigation verified via real browser flow. Home shows 3 chat rows (Leo/Noor/Sage). quick-action-button tap opens new-message modal with new-msg-search. Long-press (~900ms) reveals all 4 radial nodes (radial-new-message, radial-voice-memo, radial-share-file, radial-shared-space). Chat screen shows shared-space-pill, message-input, send-button; sent text appears in the list (also confirmed in backend log 200 POST /api/chats/{id}/messages). Bottom tabs tab-home/files/calls/you all navigate (URLs: /, /files, /calls, /you). Files tab shows Recent with By person/Categories segmented control and 4+ seeded items. Calls tab shows Sage Okafor 0:42 + Leo Marsh 3:04. You tab shows Ava Fields + sign-out-btn.",
+  "rca_of_issue": "Iteration-1 root cause was missing post-login navigation in login.tsx. Main agent's follow-up added useRouter import and the hook call but forgot the actual router.replace line. Adding `router.replace('/(tabs)')` after the successful signIn/signUp await resolves the bug fully — verified by URL change from /login to / and immediate render of the tabs stack with chat list, + button, and bottom tabs.",
+  "flow_results": {
+    "login_redirect": "PASS (URL -> /)",
+    "home_chat_rows": "PASS (3 rows: Leo, Noor, Sage with chat-row-{id})",
+    "quick_action_tap_new_message": "PASS (new-msg-search visible)",
+    "quick_action_longpress_radial": "PASS (all 4 radial-* testIDs present)",
+    "chat_row_to_chat_screen": "PASS (shared-space-pill visible)",
+    "send_text_message": "PASS (TEST_hello_playwright appears in list; backend 200)",
+    "bottom_tabs": "PASS (tab-home/files/calls/you all navigate)",
+    "files_tab": "PASS (Recent + By person/Categories + 4 seeded items incl. letter-march.txt, rainy-jazz.m3u, kitchen.jpg, voice messages)",
+    "calls_tab": "PASS (Sage 0:42, Leo 3:04)",
+    "you_tab_signout": "PASS (Ava Fields + sign-out-btn present)"
+  }
+}
