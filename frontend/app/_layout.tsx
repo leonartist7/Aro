@@ -14,6 +14,7 @@ import {
   DMSans_600SemiBold,
 } from "@expo-google-fonts/dm-sans";
 import { AuthProvider } from "../src/AuthContext";
+import { ThemeProvider, useTheme } from "../src/ThemeContext";
 import { colors } from "../src/theme";
 
 export default function RootLayout() {
@@ -34,34 +35,44 @@ export default function RootLayout() {
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
-      <AuthProvider>
-        <StatusBar style="dark" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: colors.bg },
-            animation: "fade",
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen name="login" />
-          <Stack.Screen name="(tabs)" />
-          <Stack.Screen
-            name="chat/[id]"
-            options={{ animation: "slide_from_right" }}
-          />
-          <Stack.Screen
-            name="call/[id]"
-            options={{ presentation: "fullScreenModal", animation: "fade" }}
-          />
-          <Stack.Screen
-            name="new-message"
-            options={{ presentation: "modal", animation: "slide_from_bottom" }}
-          />
-        </Stack>
-      </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <AuthProvider>
+          <ThemedStack />
+        </AuthProvider>
+      </ThemeProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function ThemedStack() {
+  const { c } = useTheme();
+  return (
+    <>
+      <StatusBar style={c.isDark ? "light" : "dark"} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: c.bg },
+          animation: "fade",
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="chat/[id]" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen
+          name="call/[id]"
+          options={{ presentation: "fullScreenModal", animation: "fade" }}
+        />
+        <Stack.Screen
+          name="new-message"
+          options={{ presentation: "transparentModal", animation: "slide_from_bottom" }}
+        />
+        <Stack.Screen name="you" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen name="appearance" options={{ animation: "slide_from_right" }} />
+      </Stack>
+    </>
   );
 }
 

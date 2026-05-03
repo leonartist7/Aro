@@ -4,27 +4,34 @@ import {
   Text,
   StyleSheet,
   Pressable,
-  FlatList,
-  ActivityIndicator,
+  ScrollView,
   TextInput,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, User } from "../src/api";
-import { colors, fonts, radius, spacing } from "../src/theme";
+import { useTheme } from "../src/ThemeContext";
+import { Palette, radius, spacing } from "../src/theme";
 import Avatar from "../src/Avatar";
 
-export default function NewMessage() {
+export default function QuickMessage() {
   const router = useRouter();
+  const { c, f } = useTheme();
+  const styles = makeStyles(c, f);
   const [users, setUsers] = useState<User[]>([]);
-  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<User | null>(null);
+  const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
-  const [creating, setCreating] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      setUsers(await api.get<User[]>("/users"));
+      const list = await api.get<User[]>("/users");
+      setUsers(list);
     } finally {
       setLoading(false);
     }
@@ -36,121 +43,245 @@ export default function NewMessage() {
     }, [load]),
   );
 
-  const filtered = users.filter((u) =>
-    [u.name, u.email].some((s) => s.toLowerCase().includes(q.toLowerCase())),
-  );
-
-  async function startChat(u: User) {
-    if (creating) return;
-    setCreating(true);
+  async function sendIt() {
+    if (!selected || !text.trim() || sending) return;
+    setSending(true);
     try {
-      const c = await api.post<{ id: string }>("/chats", { other_user_id: u.id });
-      router.replace(`/chat/${c.id}`);
+      const chat = await api.post<{ id: string }>("/chats", { other_user_id: selected.id });
+      await api.post(`/chats/${chat.id}/messages`, {
+        chat_id: chat.id,
+        type: "text",
+        text: text.trim(),
+      });
+      router.replace(`/chat/${chat.id}`);
+    } catch {
     } finally {
-      setCreating(false);
+      setSending(false);
     }
   }
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
-      <View style={styles.header}>
-        <Text style={styles.title}>New message</Text>
-        <Pressable onPress={() => router.back()} style={styles.close} testID="new-msg-close">
-          <Ionicons name="close" size={22} color={colors.text} />
-        </Pressable>
-      </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={{ flex: 1 }}
+      >
+        {/* Dismiss area */}
+        <Pressable style={styles.dismissArea} onPress={() => router.back()} />
 
-      <View style={styles.searchWrap}>
-        <Ionicons name="search-outline" size={16} color={colors.textTertiary} />
-        <TextInput
-          value={q}
-          onChangeText={setQ}
-          placeholder="Search someone"
-          placeholderTextColor={colors.textTertiary}
-          style={styles.search}
-          testID="new-msg-search"
-        />
-      </View>
+        <View style={styles.card}>
+          <View style={styles.cardHandle} />
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(u) => u.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <Pressable
-              onPress={() => startChat(item)}
-              style={({ pressed }) => [
-                styles.row,
-                pressed && { backgroundColor: colors.primaryBgSubtle },
-              ]}
-              testID={`user-${item.id}`}
-            >
-              <Avatar name={item.name} seed={item.id} size={44} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.name}>{item.name}</Text>
-                <Text style={styles.email}>{item.email}</Text>
-              </View>
-              <Ionicons name="arrow-forward" size={18} color={colors.textTertiary} />
+          <View style={styles.cardHeader}>
+            <Text style={styles.cardTitle}>Quick message</Text>
+            <Pressable onPress={() => router.back()} style={styles.close} testID="new-msg-close">
+              <Ionicons name="close" size={20} color={c.text} />
             </Pressable>
-          )}
-          ListEmptyComponent={
-            <View style={styles.center}>
-              <Text style={{ color: colors.textSecondary, fontFamily: fonts.body }}>
-                No one matches.
-              </Text>
+          </View>
+
+          <Text style={styles.sectionLabel}>To</Text>
+          {loading ? (
+            <View style={styles.loadingRow}>
+              <ActivityIndicator color={c.primary} />
             </View>
-          }
-        />
-      )}
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.contactRow}
+            >
+              {users.map((u) => {
+                const isOn = selected?.id === u.id;
+                return (
+                  <Pressable
+                    key={u.id}
+                    onPress={() => setSelected(isOn ? null : u)}
+                    style={styles.contact}
+                    testID={`contact-${u.id}`}
+                  >
+                    <View
+                      style={[
+                        styles.avatarRing,
+                        isOn && { borderColor: c.primary },
+                      ]}
+                    >
+                      <Avatar name={u.name} seed={u.id} size={56} />
+                      {isOn ? (
+                        <View style={styles.checkDot}>
+                          <Ionicons name="checkmark" size={12} color={c.textInverse} />
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text
+                      style={[
+                        styles.contactName,
+                        isOn && { color: c.primary, fontFamily: f.bodyBold },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {u.name.split(" ")[0]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+
+          <Text style={styles.sectionLabel}>Message</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              value={text}
+              onChangeText={setText}
+              placeholder={selected ? `Say hi to ${selected.name.split(" ")[0]}…` : "Pick someone above"}
+              placeholderTextColor={c.textTertiary}
+              style={styles.input}
+              multiline
+              testID="quick-message-input"
+              editable={!!selected}
+            />
+            <Pressable
+              onPress={sendIt}
+              disabled={!selected || !text.trim() || sending}
+              style={({ pressed }) => [
+                styles.sendBtn,
+                (!selected || !text.trim()) && { opacity: 0.4 },
+                pressed && { transform: [{ scale: 0.95 }] },
+              ]}
+              testID="quick-send"
+            >
+              {sending ? (
+                <ActivityIndicator color={c.textInverse} />
+              ) : (
+                <Ionicons name="arrow-up" size={20} color={c.textInverse} />
+              )}
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={() => {
+              if (!selected) return;
+              api.post<{ id: string }>("/chats", { other_user_id: selected.id }).then((chat) => {
+                router.replace(`/chat/${chat.id}`);
+              });
+            }}
+            style={styles.openChat}
+            disabled={!selected}
+            testID="open-full-chat"
+          >
+            <Text style={[styles.openChatText, !selected && { opacity: 0.4 }]}>
+              Or open the full chat  ›
+            </Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
-  },
-  title: { fontFamily: fonts.heading, fontSize: 26, color: colors.text },
-  close: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface,
-  },
-  searchWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    paddingHorizontal: spacing.md,
-    marginHorizontal: spacing.lg,
-    marginBottom: spacing.md,
-    height: 48,
-  },
-  search: { flex: 1, fontFamily: fonts.body, fontSize: 15, color: colors.text },
-  list: { paddingHorizontal: spacing.md },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.lg,
-  },
-  name: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
-  email: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: spacing.lg },
-});
+const makeStyles = (c: Palette, f: any) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.overlay },
+    dismissArea: { flex: 1 },
+    card: {
+      backgroundColor: c.bg,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.sm,
+      paddingBottom: spacing.lg,
+    },
+    cardHandle: {
+      alignSelf: "center",
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: c.border,
+      marginVertical: spacing.sm,
+    },
+    cardHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: spacing.md,
+    },
+    cardTitle: { fontFamily: f.heading, fontSize: 22, color: c.text, letterSpacing: -0.3 },
+    close: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: c.surface,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    sectionLabel: {
+      fontFamily: f.bodyBold,
+      fontSize: 11,
+      color: c.textTertiary,
+      textTransform: "uppercase",
+      letterSpacing: 1.3,
+      marginTop: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    loadingRow: { height: 80, alignItems: "center", justifyContent: "center" },
+    contactRow: { gap: spacing.md, paddingBottom: spacing.sm, paddingRight: spacing.lg },
+    contact: { alignItems: "center", width: 72 },
+    avatarRing: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 2,
+      borderColor: "transparent",
+      marginBottom: 6,
+    },
+    checkDot: {
+      position: "absolute",
+      right: 0,
+      bottom: 0,
+      width: 20,
+      height: 20,
+      borderRadius: 10,
+      backgroundColor: c.primary,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 2,
+      borderColor: c.bg,
+    },
+    contactName: {
+      fontFamily: f.body,
+      fontSize: 12,
+      color: c.textSecondary,
+      maxWidth: 72,
+      textAlign: "center",
+    },
+    inputRow: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: spacing.sm,
+      backgroundColor: c.surface,
+      borderRadius: radius.lg,
+      paddingLeft: spacing.md,
+      paddingRight: 6,
+      paddingVertical: 6,
+    },
+    input: {
+      flex: 1,
+      minHeight: 44,
+      maxHeight: 120,
+      fontFamily: f.body,
+      fontSize: 15,
+      color: c.text,
+      paddingVertical: 10,
+    },
+    sendBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: c.primary,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    openChat: { marginTop: spacing.md, alignSelf: "center", padding: spacing.sm },
+    openChatText: { fontFamily: f.bodyMedium, color: c.textSecondary, fontSize: 13 },
+  });

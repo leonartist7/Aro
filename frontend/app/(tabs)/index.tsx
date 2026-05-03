@@ -10,12 +10,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { api, Chat } from "../../src/api";
-import { colors, fonts, radius, spacing } from "../../src/theme";
+import { Palette, radius, spacing } from "../../src/theme";
+import { useTheme } from "../../src/ThemeContext";
+import { useAuth } from "../../src/AuthContext";
 import Avatar from "../../src/Avatar";
-import RadialMenu, { RadialAction } from "../../src/RadialMenu";
 
 function timeAgo(iso?: string) {
   if (!iso) return "";
@@ -41,17 +40,18 @@ function previewText(chat: Chat) {
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { c, f } = useTheme();
+  const { user } = useAuth();
+  const styles = makeStyles(c, f);
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const load = useCallback(async () => {
     try {
       const data = await api.get<Chat[]>("/chats");
       setChats(data);
-    } catch (e) {
-      // ignore
+    } catch {
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -64,67 +64,34 @@ export default function HomeScreen() {
     }, [load]),
   );
 
-  const radialActions: RadialAction[] = [
-    {
-      key: "new-message",
-      label: "New message",
-      icon: "chatbubble-ellipses-outline",
-      onPress: () => router.push("/new-message"),
-    },
-    {
-      key: "voice-memo",
-      label: "Voice memo",
-      icon: "mic-outline",
-      onPress: () => router.push("/new-message?mode=voice"),
-    },
-    {
-      key: "share-file",
-      label: "Send file",
-      icon: "document-attach-outline",
-      onPress: () => router.push("/new-message?mode=file"),
-    },
-    {
-      key: "shared-space",
-      label: "Shared space",
-      icon: "sparkles-outline",
-      onPress: () => {
-        // Phase 2 placeholder
-      },
-    },
-  ];
-
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <View>
+        <Pressable
+          onPress={() => router.push("/you")}
+          style={({ pressed }) => [
+            styles.profileBtn,
+            pressed && { transform: [{ scale: 0.96 }] },
+          ]}
+          testID="profile-button"
+        >
+          <Avatar name={user?.name} seed={user?.id} size={40} />
+        </Pressable>
+        <View style={styles.titleBlock}>
           <Text style={styles.kicker}>Today</Text>
           <Text style={styles.title}>Connect</Text>
         </View>
-        <Pressable
-          onPress={() => router.push("/new-message")}
-          onLongPress={() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-            setMenuOpen(true);
-          }}
-          delayLongPress={220}
-          style={({ pressed }) => [
-            styles.fab,
-            pressed && { transform: [{ scale: 0.96 }] },
-          ]}
-          testID="quick-action-button"
-        >
-          <Ionicons name="add" size={26} color={colors.textInverse} />
-        </Pressable>
+        <View style={{ width: 40 }} />
       </View>
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
+          <ActivityIndicator color={c.primary} />
         </View>
       ) : (
         <FlatList
           data={chats}
-          keyExtractor={(c) => c.id}
+          keyExtractor={(ch) => ch.id}
           contentContainerStyle={styles.list}
           refreshControl={
             <RefreshControl
@@ -133,13 +100,13 @@ export default function HomeScreen() {
                 setRefreshing(true);
                 load();
               }}
-              tintColor={colors.primary}
+              tintColor={c.primary}
             />
           }
           ListEmptyComponent={
             <View style={styles.empty}>
               <Text style={styles.emptyTitle}>No conversations yet</Text>
-              <Text style={styles.emptyText}>Tap the + to start one.</Text>
+              <Text style={styles.emptyText}>Tap the + below to start one.</Text>
             </View>
           }
           renderItem={({ item }) => (
@@ -147,7 +114,7 @@ export default function HomeScreen() {
               onPress={() => router.push(`/chat/${item.id}`)}
               style={({ pressed }) => [
                 styles.row,
-                pressed && { backgroundColor: colors.primaryBgSubtle },
+                pressed && { backgroundColor: c.primaryBgSubtle },
               ]}
               testID={`chat-row-${item.id}`}
             >
@@ -168,97 +135,77 @@ export default function HomeScreen() {
           ItemSeparatorComponent={() => <View style={styles.sep} />}
         />
       )}
-
-      <RadialMenu
-        visible={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        actions={radialActions}
-      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  header: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.md,
-  },
-  kicker: {
-    fontFamily: fonts.bodyMedium,
-    fontSize: 12,
-    color: colors.textTertiary,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    marginBottom: 4,
-  },
-  title: {
-    fontFamily: fonts.heading,
-    fontSize: 32,
-    color: colors.text,
-    letterSpacing: -0.5,
-  },
-  fab: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: colors.primaryDark,
-    shadowOpacity: 0.25,
-    shadowOffset: { width: 0, height: 6 },
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: spacing.md,
-    gap: spacing.md,
-    borderRadius: radius.lg,
-  },
-  rowMain: { flex: 1 },
-  rowTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  rowName: {
-    fontFamily: fonts.bodyBold,
-    fontSize: 16,
-    color: colors.text,
-    flex: 1,
-    marginRight: spacing.sm,
-  },
-  rowTime: {
-    fontFamily: fonts.body,
-    fontSize: 12,
-    color: colors.textTertiary,
-  },
-  rowPreview: {
-    fontFamily: fonts.body,
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginTop: 4,
-  },
-  sep: { height: 1, backgroundColor: colors.border, marginHorizontal: spacing.lg, opacity: 0.5 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  empty: { padding: spacing.xl, alignItems: "center" },
-  emptyTitle: {
-    fontFamily: fonts.heading,
-    fontSize: 20,
-    color: colors.text,
-    marginBottom: 6,
-  },
-  emptyText: {
-    fontFamily: fonts.body,
-    fontSize: 14,
-    color: colors.textSecondary,
-  },
-});
+const makeStyles = (c: Palette, f: any) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: c.bg },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.md,
+    },
+    profileBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      overflow: "hidden",
+    },
+    titleBlock: { flex: 1, alignItems: "center" },
+    kicker: {
+      fontFamily: f.bodyMedium,
+      fontSize: 11,
+      color: c.textTertiary,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      marginBottom: 2,
+    },
+    title: {
+      fontFamily: f.heading,
+      fontSize: 22,
+      color: c.text,
+      letterSpacing: -0.3,
+    },
+    list: { paddingHorizontal: spacing.md, paddingBottom: 120 },
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      padding: spacing.md,
+      gap: spacing.md,
+      borderRadius: radius.lg,
+    },
+    rowMain: { flex: 1 },
+    rowTop: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    rowName: {
+      fontFamily: f.bodyBold,
+      fontSize: 16,
+      color: c.text,
+      flex: 1,
+      marginRight: spacing.sm,
+    },
+    rowTime: { fontFamily: f.body, fontSize: 12, color: c.textTertiary },
+    rowPreview: {
+      fontFamily: f.body,
+      fontSize: 14,
+      color: c.textSecondary,
+      marginTop: 4,
+    },
+    sep: {
+      height: 1,
+      backgroundColor: c.border,
+      marginHorizontal: spacing.lg,
+      opacity: 0.5,
+    },
+    center: { flex: 1, alignItems: "center", justifyContent: "center" },
+    empty: { padding: spacing.xl, alignItems: "center" },
+    emptyTitle: { fontFamily: f.heading, fontSize: 20, color: c.text, marginBottom: 6 },
+    emptyText: { fontFamily: f.body, fontSize: 14, color: c.textSecondary },
+  });

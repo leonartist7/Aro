@@ -8,7 +8,8 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, fonts, shadows } from "./theme";
+import { useTheme } from "./ThemeContext";
+import { Palette } from "./theme";
 
 export type RadialAction = {
   key: string;
@@ -17,34 +18,46 @@ export type RadialAction = {
   onPress: () => void;
 };
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
 export default function RadialMenu({
   visible,
   onClose,
   actions,
-  anchor = { x: width - 48, y: 110 },
+  anchor,
 }: {
   visible: boolean;
   onClose: () => void;
   actions: RadialAction[];
   anchor?: { x: number; y: number };
 }) {
+  const { c, f } = useTheme();
+  const styles = makeStyles(c);
+
+  // Default to center-bottom (just above the tab bar) so nodes arc upward.
+  const a = anchor ?? { x: width / 2, y: height - 96 };
+  // Determine arc direction: if anchor is near bottom, arc upward (180° → 360°);
+  // otherwise use the original down-left arc.
+  const archUpward = a.y > height * 0.6;
+
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
       <Pressable style={styles.overlay} onPress={onClose} testID="radial-overlay">
         <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-          {actions.map((a, i) => (
+          {actions.map((act, i) => (
             <RadialNode
-              key={a.key}
+              key={act.key}
               index={i}
               total={actions.length}
-              anchor={anchor}
+              anchor={a}
+              archUpward={archUpward}
               visible={visible}
-              action={a}
+              action={act}
+              c={c}
+              fBody={f.bodyMedium}
               onSelect={() => {
                 onClose();
-                setTimeout(() => a.onPress(), 80);
+                setTimeout(() => act.onPress(), 80);
               }}
             />
           ))}
@@ -58,24 +71,28 @@ function RadialNode({
   index,
   total,
   anchor,
+  archUpward,
   visible,
   action,
+  c,
+  fBody,
   onSelect,
 }: {
   index: number;
   total: number;
   anchor: { x: number; y: number };
+  archUpward: boolean;
   visible: boolean;
   action: RadialAction;
+  c: Palette;
+  fBody: string;
   onSelect: () => void;
 }) {
   const progress = useSharedValue(0);
-  // Arc from ~200° to ~280° (down-left of anchor button)
-  const startDeg = 200;
-  const endDeg = 280;
+  const [startDeg, endDeg] = archUpward ? [200, 340] : [200, 280];
   const step = total > 1 ? (endDeg - startDeg) / (total - 1) : 0;
   const angle = ((startDeg + step * index) * Math.PI) / 180;
-  const radius = 110;
+  const radius = 120;
 
   useEffect(() => {
     progress.value = withDelay(
@@ -99,31 +116,34 @@ function RadialNode({
   return (
     <Animated.View
       style={[
-        styles.nodeWrap,
-        { left: anchor.x - 28, top: anchor.y - 28 },
+        nodeStyles.wrap,
+        { left: anchor.x - 40, top: anchor.y - 40 },
         style,
       ]}
     >
       <Pressable
         onPress={onSelect}
-        style={({ pressed }) => [styles.node, pressed && { transform: [{ scale: 0.95 }] }]}
+        style={({ pressed }) => [
+          nodeStyles.node,
+          { backgroundColor: c.surface },
+          pressed && { transform: [{ scale: 0.95 }] },
+        ]}
         testID={`radial-${action.key}`}
       >
-        <Ionicons name={action.icon} size={22} color={colors.text} />
+        <Ionicons name={action.icon} size={22} color={c.text} />
       </Pressable>
-      <Text style={styles.nodeLabel} numberOfLines={1}>
+      <Text
+        style={[nodeStyles.label, { color: c.textInverse, fontFamily: fBody }]}
+        numberOfLines={1}
+      >
         {action.label}
       </Text>
     </Animated.View>
   );
 }
 
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: colors.overlay,
-  },
-  nodeWrap: {
+const nodeStyles = StyleSheet.create({
+  wrap: {
     position: "absolute",
     width: 80,
     alignItems: "center",
@@ -132,16 +152,25 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
-    ...shadows.elevated,
+    shadowColor: "#000",
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 16,
+    elevation: 6,
   },
-  nodeLabel: {
+  label: {
     marginTop: 6,
-    color: colors.textInverse,
-    fontFamily: fonts.bodyMedium,
     fontSize: 12,
     textAlign: "center",
   },
 });
+
+const makeStyles = (c: Palette) =>
+  StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: c.overlay,
+    },
+  });

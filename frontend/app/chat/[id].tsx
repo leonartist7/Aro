@@ -19,6 +19,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { api, Message, User } from "../../src/api";
 import { colors, fonts, radius, spacing } from "../../src/theme";
+import { useTheme } from "../../src/ThemeContext";
 import Avatar from "../../src/Avatar";
 import { useAuth } from "../../src/AuthContext";
 import { VoiceMessageBubble, FilePreviewCard } from "../../src/MessageParts";
@@ -27,6 +28,8 @@ export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
+  const { c, f } = useTheme();
+  const styles = React.useMemo(() => makeStyles(c, f), [c, f]);
   const [chatInfo, setChatInfo] = useState<{ other: User | null } | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -259,11 +262,13 @@ export default function ChatScreen() {
 }
 
 function MessageRow({ msg, mine }: { msg: Message; mine: boolean }) {
+  const { c, f } = useTheme();
+  const styles = React.useMemo(() => makeStyles(c, f), [c, f]);
   const bubbleStyle = [
     styles.bubble,
     mine
-      ? { backgroundColor: colors.surfaceElevated, borderBottomRightRadius: 4 }
-      : { backgroundColor: colors.surface, borderBottomLeftRadius: 4 },
+      ? { backgroundColor: c.surfaceElevated, borderBottomRightRadius: 4 }
+      : { backgroundColor: c.surface, borderBottomLeftRadius: 4 },
   ];
   return (
     <View style={[styles.msgRow, mine ? styles.msgRight : styles.msgLeft]}>
@@ -294,8 +299,8 @@ function MessageRow({ msg, mine }: { msg: Message; mine: boolean }) {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+const makeStyles = (c: any, f: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -309,15 +314,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
   },
-  headerName: { fontFamily: fonts.heading, fontSize: 18, color: colors.text },
-  headerSub: { fontFamily: fonts.body, fontSize: 11, color: colors.textTertiary, marginTop: 2 },
+  headerName: { fontFamily: f.heading, fontSize: 18, color: c.text },
+  headerSub: { fontFamily: f.body, fontSize: 11, color: c.textTertiary, marginTop: 2 },
   iconBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
   },
   spacesPill: {
     flexDirection: "row",
@@ -328,16 +333,16 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: c.border,
     borderStyle: "dashed",
     marginVertical: spacing.sm,
   },
-  spacesText: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary },
+  spacesText: { fontFamily: f.body, fontSize: 12, color: c.textSecondary },
   spacesSoon: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: f.bodyMedium,
     fontSize: 10,
-    color: colors.primary,
-    backgroundColor: colors.primaryBgSubtle,
+    color: c.primary,
+    backgroundColor: c.primaryBgSubtle,
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 6,
@@ -354,11 +359,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 20,
   },
-  msgText: { fontFamily: fonts.body, fontSize: 15, color: colors.text, lineHeight: 22 },
+  msgText: { fontFamily: f.body, fontSize: 15, color: c.text, lineHeight: 22 },
   msgTime: {
-    fontFamily: fonts.body,
+    fontFamily: f.body,
     fontSize: 10,
-    color: colors.textTertiary,
+    color: c.textTertiary,
     marginTop: 4,
     alignSelf: "flex-end",
   },
@@ -366,7 +371,7 @@ const styles = StyleSheet.create({
     width: 220,
     height: 220,
     borderRadius: 16,
-    backgroundColor: colors.primaryBgSubtle,
+    backgroundColor: c.primaryBgSubtle,
   },
   composer: {
     flexDirection: "row",
@@ -375,14 +380,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: colors.bg,
+    borderTopColor: c.border,
+    backgroundColor: c.bg,
   },
   attachBtn: {
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -390,20 +395,20 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 40,
     maxHeight: 120,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: 20,
     paddingHorizontal: spacing.md,
     paddingTop: 10,
     paddingBottom: 10,
-    fontFamily: fonts.body,
+    fontFamily: f.body,
     fontSize: 15,
-    color: colors.text,
+    color: c.text,
   },
   sendBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -412,23 +417,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     padding: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderTopWidth: 1,
-    borderTopColor: colors.border,
+    borderTopColor: c.border,
   },
-  recordDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.error },
-  recordText: { flex: 1, fontFamily: fonts.bodyMedium, color: colors.text },
+  recordDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: c.error },
+  recordText: { flex: 1, fontFamily: f.bodyMedium, color: c.text },
   recordCancel: { paddingHorizontal: 10, paddingVertical: 6 },
-  recordCancelText: { color: colors.textSecondary, fontFamily: fonts.bodyMedium },
+  recordCancelText: { color: c.textSecondary, fontFamily: f.bodyMedium },
   recordSend: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     alignItems: "center",
     justifyContent: "center",
   },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   empty: { alignItems: "center", padding: spacing.xl },
-  emptyText: { fontFamily: fonts.body, color: colors.textSecondary },
+  emptyText: { fontFamily: f.body, color: c.textSecondary },
 });
