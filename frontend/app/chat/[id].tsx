@@ -167,11 +167,31 @@ export default function ChatScreen() {
         </Pressable>
       </View>
 
-      {/* Phase 2 Spaces placeholder */}
-      <Pressable style={styles.spacesPill} testID="shared-space-pill">
+      {/* Phase 2 — Start a shared space */}
+      <Pressable
+        style={styles.spacesPill}
+        onPress={async () => {
+          if (!chatInfo?.other) return;
+          try {
+            const space = await api.post<{ id: string; name?: string }>("/spaces", {
+              name: `${chatInfo.other.name.split(" ")[0]} & you`,
+              member_ids: [chatInfo.other.id],
+            });
+            await api.post(`/chats/${id}/messages`, {
+              chat_id: id,
+              type: "space_invite",
+              text: "Started a space",
+              space_id: space.id,
+              space_name: space.name || "Shared space",
+            });
+            router.push(`/space/${space.id}`);
+          } catch {}
+        }}
+        testID="shared-space-pill"
+      >
         <Ionicons name="sparkles-outline" size={14} color={colors.textSecondary} />
         <Text style={styles.spacesText}>Start a shared space</Text>
-        <Text style={styles.spacesSoon}>soon</Text>
+        <Ionicons name="arrow-forward" size={12} color={colors.primary} />
       </Pressable>
 
       <KeyboardAvoidingView
@@ -263,6 +283,7 @@ export default function ChatScreen() {
 
 function MessageRow({ msg, mine }: { msg: Message; mine: boolean }) {
   const { c, f } = useTheme();
+  const router = useRouter();
   const styles = React.useMemo(() => makeStyles(c, f), [c, f]);
   const bubbleStyle = [
     styles.bubble,
@@ -290,6 +311,43 @@ function MessageRow({ msg, mine }: { msg: Message; mine: boolean }) {
         ) : null}
         {msg.type === "file" && (
           <FilePreviewCard fileName={msg.file_name} fileSize={msg.file_size} type="file" />
+        )}
+        {msg.type === "space_invite" && (
+          <Pressable
+            onPress={() => msg.space_id && router.push(`/space/${msg.space_id}`)}
+            style={{
+              backgroundColor: c.primaryBgSubtle,
+              padding: 12,
+              borderRadius: 16,
+              minWidth: 220,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 10,
+            }}
+            testID={`join-space-${msg.space_id}`}
+          >
+            <View
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 12,
+                backgroundColor: c.primary,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="planet-outline" size={20} color={c.textInverse} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: f.bodyBold, fontSize: 13, color: c.text }}>
+                {msg.space_name || "Shared space"}
+              </Text>
+              <Text style={{ fontFamily: f.body, fontSize: 11, color: c.textSecondary, marginTop: 2 }}>
+                Tap to join
+              </Text>
+            </View>
+            <Ionicons name="arrow-forward" size={16} color={c.primary} />
+          </Pressable>
         )}
         <Text style={styles.msgTime}>
           {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

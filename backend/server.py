@@ -12,7 +12,7 @@ import jwt
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, WebSocket, WebSocketDisconnect, Query
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -113,12 +113,14 @@ class TokenOut(BaseModel):
 
 class MessageIn(BaseModel):
     chat_id: str
-    type: Literal["text", "voice", "image", "file"]
+    type: Literal["text", "voice", "image", "file", "space_invite"]
     text: Optional[str] = None
     media: Optional[str] = None  # base64 data URL
     file_name: Optional[str] = None
     file_size: Optional[int] = None
     duration_ms: Optional[int] = None  # for voice
+    space_id: Optional[str] = None  # for space_invite
+    space_name: Optional[str] = None
 
 
 class ChatCreateIn(BaseModel):
@@ -270,6 +272,8 @@ async def send_message(chat_id: str, payload: MessageIn, current=Depends(get_cur
         "file_name": payload.file_name,
         "file_size": payload.file_size,
         "duration_ms": payload.duration_ms,
+        "space_id": payload.space_id,
+        "space_name": payload.space_name,
         "created_at": now_iso(),
     }
     await db.messages.insert_one(msg)
@@ -461,6 +465,460 @@ async def on_startup():
 @app.on_event("shutdown")
 async def on_shutdown():
     client.close()
+
+
+# ---------- Spaces (Phase 2) ----------
+import asyncio
+import re
+import json as _json
+
+# Curated audio library (royalty-free). Streamed direct from public CDN.
+AUDIO_LIBRARY = [
+    {
+        "id": "rain-jazz",
+        "title": "Rain & Jazz",
+        "artist": "Ambient Loops",
+        "duration_sec": 188,
+        "cover_emoji": "🌧",
+        "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    },
+    {
+        "id": "long-walk",
+        "title": "Long Walk",
+        "artist": "Ambient Loops",
+        "duration_sec": 245,
+        "cover_emoji": "🌿",
+        "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    },
+    {
+        "id": "warm-light",
+        "title": "Warm Light",
+        "artist": "Ambient Loops",
+        "duration_sec": 213,
+        "cover_emoji": "🕯",
+        "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+    },
+    {
+        "id": "old-letters",
+        "title": "Old Letters",
+        "artist": "Ambient Loops",
+        "duration_sec": 198,
+        "cover_emoji": "✉️",
+        "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+    },
+]
+
+
+def _yt_id(url: str) -> Optional[str]:
+    if not url:
+        return None
+    m = re.search(r"(?:youtu\.be/|youtube\.com/(?:watch\?v=|embed/|v/|shorts/))([\w-]{11})", url)
+    return m.group(1) if m else None
+
+
+# WebSocket connection pool, keyed by space id
+class SpaceHub:
+    def __init__(self):
+        self.rooms: dict[str, set[WebSocket]] = {}
+        self.lock = asyncio.Lock()
+
+    async def join(self, space_id: str, ws: WebSocket):
+        async with self.lock:
+            self.rooms.setdefault(space_id, set()).add(ws)
+
+    async def leave(self, space_id: str, ws: WebSocket):
+        async with self.lock:
+            if space_id in self.rooms:
+                self.rooms[space_id].discard(ws)
+                if not self.rooms[space_id]:
+                    del self.rooms[space_id]
+
+    async def broadcast(self, space_id: str, message: dict):
+        sockets = list(self.rooms.get(space_id, []))
+        dead = []
+        for ws in sockets:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                dead.append(ws)
+        if dead:
+            async with self.lock:
+                for ws in dead:
+                    self.rooms.get(space_id, set()).discard(ws)
+
+
+hub = SpaceHub()
+
+
+def _serialize_space(s: dict, users_by_id: dict | None = None) -> dict:
+    members = [users_by_id.get(m) if users_by_id else None for m in s.get("members", [])] if users_by_id else None
+    return {
+        "id": s["id"],
+        "name": s.get("name") or "Untitled space",
+        "creator_id": s.get("creator_id"),
+        "members": s.get("members", []),
+        "member_users": [serialize_user(u) for u in members if u] if members else [],
+        "presence": s.get("presence", {}),
+        "active_members": list(s.get("presence", {}).keys()),
+        "mode": s.get("mode", "idle"),
+        "content": s.get("content"),
+        "state": s.get("state") or {
+            "is_playing": False,
+            "position_sec": 0.0,
+            "host_id": s.get("creator_id"),
+            "updated_at": s.get("created_at"),
+        },
+        "created_at": s.get("created_at"),
+        "updated_at": s.get("updated_at"),
+    }
+
+
+async def _enrich_users(ids: list[str]) -> dict:
+    users = await db.users.find({"id": {"$in": list(set(ids))}}, {"_id": 0, "password_hash": 0}).to_list(500)
+    return {u["id"]: u for u in users}
+
+
+# ---------- Models ----------
+class SpaceCreateIn(BaseModel):
+    name: Optional[str] = None
+    member_ids: List[str] = []
+
+
+class SpaceContentIn(BaseModel):
+    type: Literal["youtube", "audio"]
+    url: Optional[str] = None
+    audio_id: Optional[str] = None
+    title: Optional[str] = None
+
+
+class SpaceStateIn(BaseModel):
+    is_playing: bool
+    position_sec: float
+
+
+class SpaceMessageIn(BaseModel):
+    text: str
+
+
+class SpaceReactionIn(BaseModel):
+    emoji: str
+
+
+# ---------- Routes ----------
+@api.get("/audio/library")
+async def audio_library(current=Depends(get_current_user)):
+    return AUDIO_LIBRARY
+
+
+@api.post("/spaces")
+async def create_space(payload: SpaceCreateIn, current=Depends(get_current_user)):
+    members = list({current["id"], *payload.member_ids})
+    space = {
+        "id": str(uuid.uuid4()),
+        "name": (payload.name or "").strip() or None,
+        "creator_id": current["id"],
+        "members": members,
+        "presence": {},
+        "mode": "idle",
+        "content": None,
+        "state": {
+            "is_playing": False,
+            "position_sec": 0.0,
+            "host_id": current["id"],
+            "updated_at": now_iso(),
+        },
+        "created_at": now_iso(),
+        "updated_at": now_iso(),
+    }
+    await db.spaces.insert_one(space)
+    return _serialize_space(space)
+
+
+@api.get("/spaces")
+async def list_spaces(current=Depends(get_current_user)):
+    spaces = await db.spaces.find({"members": current["id"]}, {"_id": 0}).sort("updated_at", -1).to_list(200)
+    all_user_ids = {uid for s in spaces for uid in s.get("members", [])}
+    users_by_id = await _enrich_users(list(all_user_ids))
+    out = [_serialize_space(s, users_by_id) for s in spaces]
+    active = [s for s in out if s["active_members"]]
+    saved = [s for s in out if not s["active_members"]]
+    return {"active": active, "saved": saved}
+
+
+@api.get("/spaces/{space_id}")
+async def get_space(space_id: str, current=Depends(get_current_user)):
+    s = await db.spaces.find_one({"id": space_id, "members": current["id"]}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Space not found")
+    users_by_id = await _enrich_users(s.get("members", []))
+    return _serialize_space(s, users_by_id)
+
+
+async def _ensure_member(space_id: str, user_id: str) -> dict:
+    s = await db.spaces.find_one({"id": space_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Space not found")
+    if user_id not in s.get("members", []):
+        # auto-add (open join model for invited demo)
+        await db.spaces.update_one({"id": space_id}, {"$addToSet": {"members": user_id}})
+        s = await db.spaces.find_one({"id": space_id}, {"_id": 0})
+    return s
+
+
+@api.post("/spaces/{space_id}/join")
+async def join_space(space_id: str, current=Depends(get_current_user)):
+    await _ensure_member(space_id, current["id"])
+    await db.spaces.update_one(
+        {"id": space_id}, {"$set": {f"presence.{current['id']}": now_iso(), "updated_at": now_iso()}}
+    )
+    await hub.broadcast(space_id, {
+        "type": "presence",
+        "event": "join",
+        "user_id": current["id"],
+        "user_name": current["name"],
+        "at": now_iso(),
+    })
+    s = await db.spaces.find_one({"id": space_id}, {"_id": 0})
+    users_by_id = await _enrich_users(s.get("members", []))
+    return _serialize_space(s, users_by_id)
+
+
+@api.post("/spaces/{space_id}/leave")
+async def leave_space(space_id: str, current=Depends(get_current_user)):
+    s = await db.spaces.find_one({"id": space_id}, {"_id": 0})
+    if not s:
+        raise HTTPException(status_code=404, detail="Space not found")
+    await db.spaces.update_one(
+        {"id": space_id},
+        {"$unset": {f"presence.{current['id']}": ""}, "$set": {"updated_at": now_iso()}},
+    )
+    await hub.broadcast(space_id, {
+        "type": "presence",
+        "event": "leave",
+        "user_id": current["id"],
+        "user_name": current["name"],
+        "at": now_iso(),
+    })
+    # Save a session memory entry once everyone leaves
+    s = await db.spaces.find_one({"id": space_id}, {"_id": 0})
+    presence = s.get("presence", {})
+    if not presence:
+        # Generate session summary if there was content
+        content = s.get("content")
+        if content:
+            session = {
+                "id": str(uuid.uuid4()),
+                "type": "session",
+                "space_id": space_id,
+                "space_name": s.get("name") or "Untitled space",
+                "summary": _build_session_summary(s),
+                "content": content,
+                "members": s.get("members", []),
+                "created_at": now_iso(),
+            }
+            await db.space_sessions.insert_one(session)
+    return {"ok": True}
+
+
+def _build_session_summary(s: dict) -> dict:
+    content = s.get("content") or {}
+    title = content.get("title") or content.get("video_id") or "Shared moment"
+    return {
+        "title": title,
+        "mode": s.get("mode", "idle"),
+        "ended_at": now_iso(),
+    }
+
+
+@api.post("/spaces/{space_id}/content")
+async def set_space_content(space_id: str, payload: SpaceContentIn, current=Depends(get_current_user)):
+    await _ensure_member(space_id, current["id"])
+    if payload.type == "youtube":
+        vid = _yt_id(payload.url or "")
+        if not vid:
+            raise HTTPException(status_code=400, detail="Could not parse YouTube URL")
+        content = {
+            "type": "youtube",
+            "url": payload.url,
+            "video_id": vid,
+            "title": payload.title or f"YouTube · {vid}",
+        }
+        mode = "video"
+    else:  # audio
+        track = next((a for a in AUDIO_LIBRARY if a["id"] == payload.audio_id), None)
+        if not track:
+            raise HTTPException(status_code=400, detail="Audio track not found")
+        content = {
+            "type": "audio",
+            "audio_id": track["id"],
+            "url": track["url"],
+            "title": track["title"],
+            "artist": track["artist"],
+            "cover_emoji": track["cover_emoji"],
+            "duration_sec": track["duration_sec"],
+        }
+        mode = "audio"
+    state = {
+        "is_playing": True,
+        "position_sec": 0.0,
+        "host_id": current["id"],
+        "updated_at": now_iso(),
+    }
+    await db.spaces.update_one(
+        {"id": space_id},
+        {"$set": {"content": content, "mode": mode, "state": state, "updated_at": now_iso()}},
+    )
+    await hub.broadcast(space_id, {
+        "type": "content",
+        "content": content,
+        "mode": mode,
+        "state": state,
+        "by": current["id"],
+        "by_name": current["name"],
+    })
+    return {"ok": True, "content": content, "state": state}
+
+
+@api.post("/spaces/{space_id}/state")
+async def set_space_state(space_id: str, payload: SpaceStateIn, current=Depends(get_current_user)):
+    await _ensure_member(space_id, current["id"])
+    state = {
+        "is_playing": payload.is_playing,
+        "position_sec": max(0.0, float(payload.position_sec)),
+        "host_id": current["id"],
+        "updated_at": now_iso(),
+    }
+    await db.spaces.update_one(
+        {"id": space_id}, {"$set": {"state": state, "updated_at": now_iso()}}
+    )
+    await hub.broadcast(space_id, {
+        "type": "state",
+        "state": state,
+        "by": current["id"],
+        "by_name": current["name"],
+    })
+    return state
+
+
+@api.get("/spaces/{space_id}/messages")
+async def list_space_messages(space_id: str, current=Depends(get_current_user)):
+    await _ensure_member(space_id, current["id"])
+    msgs = await db.space_messages.find({"space_id": space_id}, {"_id": 0}).sort("created_at", 1).to_list(500)
+    return msgs
+
+
+@api.post("/spaces/{space_id}/messages")
+async def send_space_message(space_id: str, payload: SpaceMessageIn, current=Depends(get_current_user)):
+    await _ensure_member(space_id, current["id"])
+    text = payload.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty message")
+    msg = {
+        "id": str(uuid.uuid4()),
+        "space_id": space_id,
+        "sender_id": current["id"],
+        "sender_name": current["name"],
+        "text": text,
+        "created_at": now_iso(),
+    }
+    await db.space_messages.insert_one(msg)
+    msg.pop("_id", None)
+    await hub.broadcast(space_id, {"type": "message", "message": msg})
+    return msg
+
+
+@api.post("/spaces/{space_id}/reactions")
+async def send_reaction(space_id: str, payload: SpaceReactionIn, current=Depends(get_current_user)):
+    await _ensure_member(space_id, current["id"])
+    emoji = payload.emoji[:8]
+    await hub.broadcast(space_id, {
+        "type": "reaction",
+        "emoji": emoji,
+        "by": current["id"],
+        "by_name": current["name"],
+        "at": now_iso(),
+    })
+    return {"ok": True}
+
+
+@api.get("/space-sessions")
+async def list_sessions(current=Depends(get_current_user)):
+    sessions = await db.space_sessions.find({"members": current["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
+    return sessions
+
+
+# ---------- WebSocket ----------
+def _verify_ws_token(token: str) -> Optional[dict]:
+    try:
+        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception:
+        return None
+
+
+@app.websocket("/api/ws/spaces/{space_id}")
+async def space_ws(websocket: WebSocket, space_id: str, token: str = Query(...)):
+    payload = _verify_ws_token(token)
+    if not payload:
+        await websocket.close(code=4401)
+        return
+    user_id = payload["sub"]
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password_hash": 0})
+    if not user:
+        await websocket.close(code=4401)
+        return
+    space = await db.spaces.find_one({"id": space_id}, {"_id": 0})
+    if not space:
+        await websocket.close(code=4404)
+        return
+
+    await websocket.accept()
+    await hub.join(space_id, websocket)
+
+    # mark presence
+    await db.spaces.update_one(
+        {"id": space_id},
+        {"$addToSet": {"members": user_id}, "$set": {f"presence.{user_id}": now_iso(), "updated_at": now_iso()}},
+    )
+    await hub.broadcast(space_id, {
+        "type": "presence",
+        "event": "join",
+        "user_id": user_id,
+        "user_name": user["name"],
+        "at": now_iso(),
+    })
+
+    # send current state snapshot
+    refreshed = await db.spaces.find_one({"id": space_id}, {"_id": 0})
+    users_by_id = await _enrich_users(refreshed.get("members", []))
+    await websocket.send_json({"type": "snapshot", "space": _serialize_space(refreshed, users_by_id)})
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                msg = _json.loads(data)
+            except Exception:
+                continue
+            t = msg.get("type")
+            if t == "ping":
+                await websocket.send_json({"type": "pong"})
+            # All other state changes go through HTTP POST endpoints which
+            # then broadcast via hub. Keep WS read loop alive only.
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await hub.leave(space_id, websocket)
+        await db.spaces.update_one(
+            {"id": space_id},
+            {"$unset": {f"presence.{user_id}": ""}, "$set": {"updated_at": now_iso()}},
+        )
+        await hub.broadcast(space_id, {
+            "type": "presence",
+            "event": "leave",
+            "user_id": user_id,
+            "user_name": user["name"],
+            "at": now_iso(),
+        })
 
 
 # Mount router & CORS

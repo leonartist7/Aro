@@ -1,0 +1,42 @@
+{
+  "summary": "Phase-2 Spaces testing (backend + frontend). Backend: 40/40 pytest cases pass — Phase-1 regression (22) + new Spaces suite (18) covering audio library, space CRUD, content (YouTube parsing + audio), state sync with host_id, messages, reactions, space_invite chat message, leave, and WebSocket (snapshot + presence broadcast + invalid-token rejection). Frontend: logged in as Ava, walked Spaces tab → create → enter room → add YouTube → add audio (Rain & Jazz) → reactions → chat overlay → leave, all succeeded. Also validated chat shared-space-pill flow: tap pill → creates a new space + space_invite message → navigates into /space/[id] → WebSocket wss://.../api/ws/spaces/{id}?token=… opens cleanly → leave → returns to chat where 4 join-space-<id> cards now render correctly.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "space/[id] (web preview only)", "issues": ["YouTube mode shows the text 'React Native WebView does not support this platform.' instead of an iframe when running in the Expo web preview. This is a web-only limitation of react-native-webview (the package simply does not implement a web target here) and per the agent-to-agent context note this is a known limitation NOT to flag — it will work on iOS/Android. Flagging only for awareness so main agent knows 'youtube-player' visibility cannot be verified from web Playwright."]}
+    ],
+    "react_native_issues": [
+      {"component": "space/[id] reactions strip", "issue": "Spec/problem-statement lists the 6 emojis as [❤️, 😂, 👏, 🔥, 😢, ✨]; actual implementation uses [❤️, 😂, 🔥, 👏, 🌙, ✨] (🌙 replaces 😢 and the order of 👏/🔥 is swapped). testIDs reaction-❤️..reaction-✨ are all present; reaction-😢 does NOT exist, reaction-🌙 does. Minor spec divergence — main agent to confirm which is canonical."}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_4.json",
+    "/app/test_reports/pytest/iteration_4.xml",
+    "/app/backend/tests/test_spaces_api.py",
+    "/app/backend/tests/test_connect_api.py"
+  ],
+  "action_items": [
+    "(Optional) Decide whether to match the spec reaction set (swap 🌙 back to 😢) or update the spec to reflect the current 🌙 choice.",
+    "(Already called out in context note) YouTube WebView does not render on web preview — testing must be done on iOS/Android for that feature. No code change required.",
+    "(Carried over from iteration 3) shadow* style deprecation warnings — cosmetic only."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now ~930 lines and mixes auth/chats/spaces. Consider splitting into routers (auth.py, chats.py, spaces.py) once Phase-2.x lands — not urgent.",
+    "space_ws handler broadcasts the join event before sending the snapshot which means the newly-connected client receives its own presence.join before snapshot. Frontend handles this fine, but it means tests must drain, not assume ordering.",
+    "/api/spaces/{id}/leave unsets presence and conditionally writes a space_sessions doc when presence becomes empty, but the WebSocket disconnect path ALSO unsets presence — if a user only uses WS (never calls /leave) the session summary branch in the HTTP leave endpoint is bypassed. Works for current UI (space-leave calls both) but worth documenting.",
+    "_yt_id regex rejects bare 11-char ids (e.g. if a user pastes only 'dQw4w9WgXcQ') — currently that returns 400. Consider accepting raw ids as a convenience.",
+    "SpaceReactionIn has no validation on emoji content — any string up to 8 chars is accepted and broadcast. Fine for a trusted demo.",
+    "spaces list response does not include the last 'content' preview which would help the 'Your Rooms' list show what was last playing. Nice-to-have."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_spaces_api.py (new — 18 pytest cases incl. 2 async WS tests)"
+  ],
+  "success_rate": {"backend": "100% (40/40 pytest cases pass — 22 Phase-1 regression + 18 Phase-2 Spaces)", "frontend": "~95% (all 13 frontend flow checks succeed; YouTube iframe is not verifiable on web per stated known limitation; reaction 😢 vs 🌙 is a spec mismatch, not a bug)"},
+  "seed_data_creation": "During frontend testing, created 4+ TEST spaces (via create-space-submit and shared-space-pill) and several TEST space_invite messages + one 'hello from TEST' space chat message. Harmless residual data in spaces, space_messages, and messages collections.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend: pytest suite at /app/backend/tests/ runs green in ~5s. Async WS tests rely on module-level pytest.space_id set by the CRUD suite — run the whole file, not individual tests. Frontend: login inputs are first two <input> tags; 'Sign in' is not testID'd. Shared-space-pill testID='shared-space-pill' on /chat/[id]. After tapping it, router.replace navigates to /space/<new_id> within ~3s (server-side space create + first-message send + navigation). Join-space cards use testID='join-space-<space_id>' (with dashes in UUID). YouTube iframe CANNOT be verified on web preview — assert space-add-content flow + mode switch via API instead. Reactions strip uses emojis [❤️, 😂, 🔥, 👏, 🌙, ✨]. WebSocket URL pattern: wss://<host>/api/ws/spaces/<id>?token=<JWT>.",
+  "rca_of_issue": "No blocking issues. Two minor spec/spec-vs-implementation gaps documented above (emoji set, WebView on web preview). Both are clearly minor."
+}

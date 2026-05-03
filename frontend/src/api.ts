@@ -63,12 +63,14 @@ export type Message = {
   chat_id: string;
   sender_id: string;
   sender_name: string;
-  type: "text" | "voice" | "image" | "file";
+  type: "text" | "voice" | "image" | "file" | "space_invite";
   text?: string | null;
   media?: string | null;
   file_name?: string | null;
   file_size?: number | null;
   duration_ms?: number | null;
+  space_id?: string | null;
+  space_name?: string | null;
   created_at: string;
 };
 

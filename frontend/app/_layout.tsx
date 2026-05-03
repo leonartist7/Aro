@@ -71,6 +71,14 @@ function ThemedStack() {
         />
         <Stack.Screen name="you" options={{ animation: "slide_from_right" }} />
         <Stack.Screen name="appearance" options={{ animation: "slide_from_right" }} />
+        <Stack.Screen
+          name="space/[id]"
+          options={{ presentation: "fullScreenModal", animation: "slide_from_bottom" }}
+        />
+        <Stack.Screen
+          name="space/create"
+          options={{ presentation: "modal", animation: "slide_from_bottom" }}
+        />
       </Stack>
     </>
   );
