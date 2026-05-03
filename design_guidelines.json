@@ -1,0 +1,231 @@
+{
+  "theme": "Organic & Earthy Luxury",
+  "app_name": "Connect",
+  "archetype": "Warm, Calm, Premium Messaging",
+  "design_philosophy": "Quiet, personal, elegant, and not cluttered. Avoid social media style UI, overloaded screens, and harsh contrasts. Zero bright white, zero blue.",
+  "colors": {
+    "background": {
+      "default": "#FBF9F6",
+      "surface": "#F2EFE9",
+      "surface_elevated": "#EBE6DC",
+      "overlay": "rgba(60, 53, 45, 0.4)"
+    },
+    "primary": {
+      "default": "#A98C70",
+      "dark": "#8C7158",
+      "light": "#C3AB95",
+      "bg_subtle": "#F0EAE3"
+    },
+    "text": {
+      "primary": "#3C352D",
+      "secondary": "#8B8276",
+      "tertiary": "#AFA79D",
+      "inverse": "#FBF9F6"
+    },
+    "border": {
+      "default": "#E6E1D6",
+      "focus": "#A98C70"
+    },
+    "status": {
+      "error": "#C47365",
+      "error_bg": "#F6E8E6",
+      "success": "#738061"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Fraunces, serif",
+      "body": "DM Sans, sans-serif",
+      "fallback": "Georgia, serif / system-ui, sans-serif"
+    },
+    "scale": {
+      "h1": {
+        "size": "32px",
+        "weight": "600",
+        "tracking": "-0.02em",
+        "lineHeight": "1.2"
+      },
+      "h2": {
+        "size": "24px",
+        "weight": "600",
+        "tracking": "-0.01em",
+        "lineHeight": "1.3"
+      },
+      "h3": {
+        "size": "20px",
+        "weight": "500",
+        "tracking": "0",
+        "lineHeight": "1.4"
+      },
+      "body_lg": {
+        "size": "18px",
+        "weight": "400",
+        "tracking": "0",
+        "lineHeight": "1.5"
+      },
+      "body": {
+        "size": "16px",
+        "weight": "400",
+        "tracking": "0",
+        "lineHeight": "1.5"
+      },
+      "caption": {
+        "size": "14px",
+        "weight": "500",
+        "tracking": "0.01em",
+        "lineHeight": "1.4"
+      }
+    }
+  },
+  "geometry": {
+    "radius": {
+      "sm": "12px",
+      "md": "16px",
+      "lg": "24px",
+      "full": "9999px"
+    },
+    "spacing": {
+      "xs": "4px",
+      "sm": "8px",
+      "md": "16px",
+      "lg": "24px",
+      "xl": "32px",
+      "xxl": "48px"
+    }
+  },
+  "shadows": {
+    "soft": "0 4px 20px rgba(60, 53, 45, 0.05)",
+    "elevated": "0 12px 32px rgba(60, 53, 45, 0.08)",
+    "inner": "inset 0 2px 4px rgba(60, 53, 45, 0.02)"
+  },
+  "animations": {
+    "duration": {
+      "fast": "200ms",
+      "normal": "300ms"
+    },
+    "easing": {
+      "spring": "cubic-bezier(0.175, 0.885, 0.32, 1.275)",
+      "smooth": "cubic-bezier(0.25, 1, 0.5, 1)"
+    },
+    "interactions": {
+      "press": "scale down to 0.97 smoothly",
+      "radial_expand": "spring out from center of button with 300ms duration, stagger items by 50ms"
+    }
+  },
+  "components": {
+    "bottom_nav": {
+      "structure": "Floating pill or soft elevated bottom bar. Avoid harsh top borders.",
+      "background": "#F2EFE9",
+      "radius": "32px",
+      "active_state": "Icon in Primary (#A98C70) with a subtle dot indicator underneath.",
+      "inactive_state": "Icon in Text Secondary (#8B8276)",
+      "tabs": ["Home", "Files", "Calls", "You"]
+    },
+    "quick_action_button": {
+      "position": "Top right of the Home (Chat List) screen header.",
+      "visual": "Circular, 48x48px, Background: Primary (#A98C70), Icon: Plus (#FBF9F6).",
+      "interactions": {
+        "tap": "Opens 'New Message' modal/screen.",
+        "long_press": "Triggers Radial Action Menu."
+      }
+    },
+    "radial_action_menu": {
+      "overlay": "Dark warm blur overlay (rgba(60, 53, 45, 0.4)).",
+      "nodes": "3 to 4 circular floating action nodes appearing in an arc around the button (e.g., New Group, Scan, Voice Memo). Background: #F2EFE9, Icon: #3C352D.",
+      "animation": "Spring-based expansion and contraction."
+    },
+    "chat_bubble": {
+      "radius": "20px",
+      "directional_radius": "4px on the corner connecting to the sender.",
+      "outgoing": {
+        "background": "#EBE6DC",
+        "text": "#3C352D"
+      },
+      "incoming": {
+        "background": "#F2EFE9",
+        "text": "#3C352D"
+      }
+    },
+    "voice_message": {
+      "visual": "Horizontal rounded pill (24px radius). Contains a play button and waveform.",
+      "waveform": "Vertical rounded bars. Played portion uses Primary (#A98C70), unplayed uses Border (#E6E1D6)."
+    },
+    "file_preview_card": {
+      "visual": "Soft rectangle with 16px radius. Background #F2EFE9.",
+      "layout": "Left icon (doc, image, audio) in a soft square, middle is title/size, right is download/view action.",
+      "typography": "Title uses body (16px, 500 weight), subtitle uses caption in Text Secondary."
+    },
+    "spaces_placeholder": {
+      "visual": "A muted, non-intrusive banner or pill button integrated at the top of a chat or home screen.",
+      "text": "'Start a shared space'",
+      "style": "Dashed or soft border (#E6E1D6), transparent background, Text Secondary color, 16px radius."
+    }
+  },
+  "screens": {
+    "auth": {
+      "layout": "Minimalist centered layout. Large Fraunces headline. Smooth inputs with warm border focus states.",
+      "inputs": "Height 56px, Radius 16px, Bg #F2EFE9, Border transparent (Border Focus #A98C70)."
+    },
+    "home_chat_list": {
+      "header": "Fraunces H1 'Connect', Quick Action Button on right.",
+      "list_item": "Row with Avatar (48px), Name (Body Lg), Preview (Caption). Unread indicator: Soft Primary dot."
+    },
+    "files_hub": {
+      "layout": "Segmented control or soft tabs (Recent, By Person, Categories).",
+      "grid": "2-column bento-style grid for categories (Images, Docs, Audio) with large soft icons."
+    },
+    "calls_mock": {
+      "layout": "Centered avatar with soft glowing rings pulsing outward (Shadow Glow). Warm dark overlay for the active call feel."
+    },
+    "profile_you": {
+      "layout": "Large avatar, Name. List of settings items grouped in soft cards (Radius 24px, Bg #F2EFE9)."
+    }
+  },
+  "icons": {
+    "library": "Phosphor Icons",
+    "style": "Regular or Duotone. Must feel soft and legible."
+  },
+  "media": {
+    "avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1775436992732-57f17ef88745?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwzfHxwb3J0cmFpdCUyMGNhbG0lMjBmYWNlJTIwbmF0dXJhbCUyMGxpZ2h0aW5nfGVufDB8fHx8MTc3Nzc5NzY2M3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Young woman with brown hair looking at camera (warm, natural)",
+        "category": "user_avatar"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1763677593928-468dc9767e7b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA2OTV8MHwxfHNlYXJjaHwxfHxwb3J0cmFpdCUyMGNhbG0lMjBmYWNlJTIwbmF0dXJhbCUyMGxpZ2h0aW5nfGVufDB8fHx8MTc3Nzc5NzY2M3ww&ixlib=rb-4.1.0&q=85",
+        "description": "A woman with her hand on her face (calm, serene)",
+        "category": "user_avatar"
+      },
+      {
+        "url": "https://images.pexels.com/photos/16727980/pexels-photo-16727980.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Close-up profile of woman in a turtleneck",
+        "category": "user_avatar"
+      },
+      {
+        "url": "https://images.pexels.com/photos/8598812/pexels-photo-8598812.png?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Close-up of a man sleeping peacefully",
+        "category": "user_avatar"
+      }
+    ],
+    "textures": [
+      {
+        "url": "https://images.unsplash.com/photo-1644656103801-32f760b65d45?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDQ2MzR8MHwxfHNlYXJjaHwyfHxjYWxtJTIwd2FybSUyMGFic3RyYWN0JTIwdGV4dHVyZSUyMGJlaWdlfGVufDB8fHx8MTc3Nzc5NzY2M3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract beige background with wavy lines",
+        "category": "background_texture"
+      }
+    ]
+  },
+  "testing": {
+    "attributes": "All interactive elements must include a data-testid attribute for robust testing (e.g. data-testid='login-button', data-testid='chat-tab')."
+  },
+  "instructions_to_main_agent": [
+    "Use standard React Native View and Text components mapped to the design system rules.",
+    "Implement the radial menu via Reanimated or standard React Native Animated API to achieve the 200-300ms spring animations.",
+    "Ensure all fonts are loaded correctly (Fraunces and DM Sans or safe fallbacks).",
+    "Replace ALL standard white backgrounds (#FFFFFF) with #FBF9F6 and standard blacks (#000000) with #3C352D.",
+    "Use Phosphor icons. All icons should share the soft geometry.",
+    "Add 'data-testid' to touchables and buttons.",
+    "For phase 1 MVP, create the static shell of features if backend is not requested."
+  ]
+}
