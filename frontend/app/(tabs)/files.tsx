@@ -13,6 +13,7 @@ import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, Message, User } from "../../src/api";
 import { colors, fonts, radius, spacing } from "../../src/theme";
+import { useTheme } from "../../src/ThemeContext";
 
 type FileMsg = Message & { sender: User | null };
 
@@ -39,6 +40,8 @@ function dateLabel(iso?: string) {
 }
 
 export default function FilesScreen() {
+  const { c, f } = useTheme();
+  const styles = React.useMemo(() => makeStyles(c, f), [c, f]);
   const [section, setSection] = useState<Section>("Recent");
   const [files, setFiles] = useState<FileMsg[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +105,7 @@ export default function FilesScreen() {
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
+          <ActivityIndicator color={c.primary} />
         </View>
       ) : section === "Categories" && !activeCat ? (
         <ScrollView contentContainerStyle={styles.catGrid}>
@@ -119,7 +122,7 @@ export default function FilesScreen() {
                 testID={`category-${c.key}`}
               >
                 <View style={styles.catIcon}>
-                  <Ionicons name={c.icon} size={26} color={colors.primaryDark} />
+                  <Ionicons name={c.icon} size={26} color={c.primaryDark} />
                 </View>
                 <Text style={styles.catLabel}>{c.label}</Text>
                 <Text style={styles.catCount}>{count} items</Text>
@@ -155,7 +158,7 @@ export default function FilesScreen() {
           ListHeaderComponent={
             section === "Categories" && activeCat ? (
               <Pressable onPress={() => setActiveCat(null)} style={styles.backLink}>
-                <Ionicons name="chevron-back" size={16} color={colors.primary} />
+                <Ionicons name="chevron-back" size={16} color={c.primary} />
                 <Text style={styles.backText}>All categories</Text>
               </Pressable>
             ) : null
@@ -166,31 +169,35 @@ export default function FilesScreen() {
   );
 }
 
-function FileRow({ f, showSender = false }: { f: FileMsg; showSender?: boolean }) {
+function FileRow({ f: fileItem, showSender = false }: { f: FileMsg; showSender?: boolean }) {
+  const { c, f: font } = useTheme();
+  const styles = React.useMemo(() => makeStyles(c, font), [c, font]);
   const icon =
-    f.type === "image" ? "image-outline" : f.type === "voice" ? "musical-notes-outline" : "document-text-outline";
+    fileItem.type === "image" ? "image-outline" : fileItem.type === "voice" ? "musical-notes-outline" : "document-text-outline";
   const title =
-    f.file_name || (f.type === "voice" ? "Voice message" : f.type === "image" ? "Image" : "File");
+    fileItem.file_name || (fileItem.type === "voice" ? "Voice message" : fileItem.type === "image" ? "Image" : "File");
   return (
     <View style={styles.fileRow}>
       <View style={styles.fileIcon}>
-        <Ionicons name={icon as any} size={20} color={colors.primaryDark} />
+        <Ionicons name={icon as any} size={20} color={c.primaryDark} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.fileTitle} numberOfLines={1}>
           {title}
         </Text>
         <Text style={styles.fileSub} numberOfLines={1}>
-          {showSender && f.sender ? `${f.sender.name} · ` : ""}
-          {fmtBytes(f.file_size) || dateLabel(f.created_at)}
+          {showSender && fileItem.sender ? `${fileItem.sender.name} · ` : ""}
+          {fmtBytes(fileItem.file_size) || dateLabel(fileItem.created_at)}
         </Text>
       </View>
-      <Text style={styles.fileDate}>{dateLabel(f.created_at)}</Text>
+      <Text style={styles.fileDate}>{dateLabel(fileItem.created_at)}</Text>
     </View>
   );
 }
 
 function EmptyHint({ label }: { label: string }) {
+  const { c, f } = useTheme();
+  const styles = React.useMemo(() => makeStyles(c, f), [c, f]);
   return (
     <View style={styles.empty}>
       <Text style={styles.emptyText}>{label}</Text>
@@ -198,18 +205,18 @@ function EmptyHint({ label }: { label: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+const makeStyles = (c: any, f: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.sm },
   kicker: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: f.bodyMedium,
     fontSize: 12,
-    color: colors.textTertiary,
+    color: c.textTertiary,
     letterSpacing: 1.4,
     textTransform: "uppercase",
     marginBottom: 4,
   },
-  title: { fontFamily: fonts.heading, fontSize: 32, color: colors.text, letterSpacing: -0.5 },
+  title: { fontFamily: f.heading, fontSize: 32, color: c.text, letterSpacing: -0.5 },
   segmentRow: {
     flexDirection: "row",
     paddingHorizontal: spacing.lg,
@@ -221,17 +228,17 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 999,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
   },
-  segmentActive: { backgroundColor: colors.primary },
-  segmentText: { color: colors.textSecondary, fontFamily: fonts.bodyMedium, fontSize: 13 },
-  segmentTextActive: { color: colors.textInverse },
+  segmentActive: { backgroundColor: c.primary },
+  segmentText: { color: c.textSecondary, fontFamily: f.bodyMedium, fontSize: 13 },
+  segmentTextActive: { color: c.textInverse },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl, gap: spacing.sm },
   fileRow: {
     flexDirection: "row",
     alignItems: "center",
     padding: spacing.md,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radius.lg,
     gap: spacing.md,
     marginBottom: spacing.sm,
@@ -240,13 +247,13 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: radius.sm,
-    backgroundColor: colors.primaryBgSubtle,
+    backgroundColor: c.primaryBgSubtle,
     alignItems: "center",
     justifyContent: "center",
   },
-  fileTitle: { fontFamily: fonts.bodyMedium, fontSize: 15, color: colors.text },
-  fileSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  fileDate: { fontFamily: fonts.body, fontSize: 12, color: colors.textTertiary },
+  fileTitle: { fontFamily: f.bodyMedium, fontSize: 15, color: c.text },
+  fileSub: { fontFamily: f.body, fontSize: 12, color: c.textSecondary, marginTop: 2 },
+  fileDate: { fontFamily: f.body, fontSize: 12, color: c.textTertiary },
   catGrid: {
     paddingHorizontal: spacing.md,
     flexDirection: "row",
@@ -257,7 +264,7 @@ const styles = StyleSheet.create({
   catCard: {
     width: "48%",
     aspectRatio: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radius.xl,
     padding: spacing.lg,
     justifyContent: "space-between",
@@ -266,24 +273,24 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 16,
-    backgroundColor: colors.primaryBgSubtle,
+    backgroundColor: c.primaryBgSubtle,
     alignItems: "center",
     justifyContent: "center",
   },
-  catLabel: { fontFamily: fonts.heading, fontSize: 22, color: colors.text },
-  catCount: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary },
+  catLabel: { fontFamily: f.heading, fontSize: 22, color: c.text },
+  catCount: { fontFamily: f.body, fontSize: 13, color: c.textSecondary },
   personCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radius.xl,
     padding: spacing.md,
     marginBottom: spacing.md,
   },
-  personName: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
-  personMeta: { fontFamily: fonts.body, fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  personName: { fontFamily: f.bodyBold, fontSize: 16, color: c.text },
+  personMeta: { fontFamily: f.body, fontSize: 12, color: c.textSecondary, marginTop: 2 },
   personFiles: { marginTop: spacing.sm, gap: spacing.sm },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   empty: { padding: spacing.xl, alignItems: "center" },
-  emptyText: { fontFamily: fonts.body, color: colors.textSecondary },
+  emptyText: { fontFamily: f.body, color: c.textSecondary },
   backLink: {
     flexDirection: "row",
     alignItems: "center",
@@ -291,5 +298,5 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     marginBottom: spacing.sm,
   },
-  backText: { color: colors.primary, fontFamily: fonts.bodyMedium, fontSize: 14, marginLeft: 4 },
+  backText: { color: c.primary, fontFamily: f.bodyMedium, fontSize: 14, marginLeft: 4 },
 });

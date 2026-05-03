@@ -12,6 +12,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, User } from "../../src/api";
 import { colors, fonts, radius, spacing } from "../../src/theme";
+import { useTheme } from "../../src/ThemeContext";
 import Avatar from "../../src/Avatar";
 
 type Call = {
@@ -37,6 +38,8 @@ function dateLabel(iso: string) {
 
 export default function CallsScreen() {
   const router = useRouter();
+  const { c, f } = useTheme();
+  const styles = React.useMemo(() => makeStyles(c, f), [c, f]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,7 +66,7 @@ export default function CallsScreen() {
       </View>
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} />
+          <ActivityIndicator color={c.primary} />
         </View>
       ) : (
         <FlatList
@@ -85,7 +88,7 @@ export default function CallsScreen() {
               }
               style={({ pressed }) => [
                 styles.row,
-                pressed && { backgroundColor: colors.primaryBgSubtle },
+                pressed && { backgroundColor: c.primaryBgSubtle },
               ]}
               testID={`call-row-${item.id}`}
             >
@@ -98,7 +101,7 @@ export default function CallsScreen() {
                   <Ionicons
                     name={item.status === "missed" ? "call-outline" : "checkmark-circle-outline"}
                     size={14}
-                    color={item.status === "missed" ? colors.error : colors.success}
+                    color={item.status === "missed" ? c.error : c.success}
                   />
                   <Text style={styles.rowSub}>
                     {item.status === "missed" ? "Missed" : `${dur(item.duration_sec)}`}
@@ -115,7 +118,7 @@ export default function CallsScreen() {
                 style={styles.callBtn}
                 testID={`call-back-${item.id}`}
               >
-                <Ionicons name="call-outline" size={18} color={colors.primary} />
+                <Ionicons name="call-outline" size={18} color={c.primary} />
               </Pressable>
             </Pressable>
           )}
@@ -126,18 +129,18 @@ export default function CallsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+const makeStyles = (c: any, f: any) => StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md },
   kicker: {
-    fontFamily: fonts.bodyMedium,
+    fontFamily: f.bodyMedium,
     fontSize: 12,
-    color: colors.textTertiary,
+    color: c.textTertiary,
     letterSpacing: 1.4,
     textTransform: "uppercase",
     marginBottom: 4,
   },
-  title: { fontFamily: fonts.heading, fontSize: 32, color: colors.text, letterSpacing: -0.5 },
+  title: { fontFamily: f.heading, fontSize: 32, color: c.text, letterSpacing: -0.5 },
   list: { paddingHorizontal: spacing.md, paddingBottom: spacing.xxl },
   row: {
     flexDirection: "row",
@@ -147,20 +150,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.lg,
   },
   rowMain: { flex: 1 },
-  rowName: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
+  rowName: { fontFamily: f.bodyBold, fontSize: 16, color: c.text },
   rowSubLine: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 },
-  rowSub: { fontFamily: fonts.body, fontSize: 13, color: colors.textSecondary },
+  rowSub: { fontFamily: f.body, fontSize: 13, color: c.textSecondary },
   callBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primaryBgSubtle,
+    backgroundColor: c.primaryBgSubtle,
     alignItems: "center",
     justifyContent: "center",
   },
-  sep: { height: 1, backgroundColor: colors.border, marginHorizontal: spacing.lg, opacity: 0.5 },
+  sep: { height: 1, backgroundColor: c.border, marginHorizontal: spacing.lg, opacity: 0.5 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   empty: { padding: spacing.xl, alignItems: "center" },
-  emptyTitle: { fontFamily: fonts.heading, fontSize: 20, color: colors.text, marginBottom: 6 },
-  emptyText: { fontFamily: fonts.body, fontSize: 14, color: colors.textSecondary, textAlign: "center" },
+  emptyTitle: { fontFamily: f.heading, fontSize: 20, color: c.text, marginBottom: 6 },
+  emptyText: { fontFamily: f.body, fontSize: 14, color: c.textSecondary, textAlign: "center" },
 });

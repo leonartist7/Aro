@@ -2,29 +2,38 @@
 
 A warm, calm, low-blue-light 1:1 messaging app built with Expo (React Native) + FastAPI + MongoDB.
 
-## Phase 1 Scope (shipped)
+## Phase 1 Scope (shipped — v0.2)
 
 - Email/password auth (JWT, bcrypt) with session persistence (AsyncStorage)
-- Bottom tab nav: **Home · Files · Calls · You** (architected to add **Spaces** as a 5th tab)
-- Home: chat list + top-right `+` button
-  - Tap → "New message" modal (search & start chat)
-  - Long-press → animated radial action menu (4 nodes; spring animation)
+- **Bottom nav redesign (v0.2)**: `Home · Files · [+] · Calls · Spaces` with a raised center FAB.
+  - Tap `+` → Quick Message card (bottom sheet) with horizontal contact circles + inline text input
+  - Long-press `+` → animated upward-arc radial menu with 4 nodes
+- **Top-left profile avatar** on every tab → opens `/you` as a standalone screen
 - 1:1 chat with text, voice messages, images, files
-  - Voice: tap-and-hold mic to record, slide to cancel/send (mocked audio bytes; duration recorded)
-  - Image: gallery picker (base64 inline)
-  - File: document picker (filename + size)
-  - Polling every 4s for new messages (websocket-ready architecture)
   - "Start a shared space" pill (Phase 2 placeholder, non-functional)
+  - Polling every 4s for new messages (websocket-ready)
 - Files hub: Recent / By person / Categories (Images, Documents, Audio)
-- Calls tab: history list, mocked call screen with pulsing rings, end-call records call
-- You tab: profile, settings rows, sign out
+- Calls tab: history + mocked call screen with pulsing rings
+- **Spaces tab** (new): Phase-2 placeholder with hero + feature cards + "nudge me" waitlist CTA
+- `/you`: profile, settings rows, sign out
+- **`/appearance` (new)**: visual theme picker with live preview
+  - 4 palette presets: **Warm** (default), **Dune**, **Evening**, **Charcoal**
+  - 3 typography pairs: **Fraunces · DM Sans**, **Fraunces all the way**, **DM Sans only**
+  - Choices persist in AsyncStorage, apply live across every screen
 
 ## Architecture for Phase 2 (Spaces)
 
-- `chats` collection has a `type` field (`"dm"` today; `"space"` in future) so the same messaging API serves both.
-- Bottom tab nav is data-driven — adding a `Spaces` tab is a one-liner.
+- `chats` collection has a `type` field (`"dm"` today; `"space"` in future) — messaging API serves both.
+- Bottom tab nav is data-driven — Spaces tab already exists; opening a real Space is the only new code.
 - Chat screen already renders a "Start a shared space" pill placeholder.
 - Messages are room-based via `chat_id`, so multi-user rooms reuse `/api/chats/{id}/messages` unchanged.
+
+## Theming architecture
+
+- `src/theme.ts` exports 4 `Palette` presets + 3 `FontPair` presets.
+- `src/ThemeContext.tsx` provides `useTheme()` → `{ c, f, themeName, setTheme, fontKey, setFontKey }`.
+- Every screen uses the `makeStyles(c, f)` pattern with `useMemo` so theme changes re-style instantly.
+- Selection persists in AsyncStorage (`connect_theme`, `connect_font`).
 
 ## Tech
 
