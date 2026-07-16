@@ -14,10 +14,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { api, Message, User } from "../../src/api";
 import { colors, fonts, radius, spacing } from "../../src/theme";
 import { useTheme } from "../../src/ThemeContext";
+import { spacesApi, SpaceSession } from "../../src/spaces";
 
 type FileMsg = Message & { sender: User | null };
 
-const SECTIONS = ["Recent", "By person", "Categories"] as const;
+const SECTIONS = ["Recent", "By person", "Categories", "Sessions"] as const;
 type Section = (typeof SECTIONS)[number];
 
 const CATEGORIES: { key: "image" | "file" | "voice"; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
@@ -46,11 +47,16 @@ export default function FilesScreen() {
   const [files, setFiles] = useState<FileMsg[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeCat, setActiveCat] = useState<null | "image" | "file" | "voice">(null);
+  const [sessions, setSessions] = useState<SpaceSession[]>([]);
 
   const load = useCallback(async () => {
     try {
-      const data = await api.get<FileMsg[]>("/files");
+      const [data, sess] = await Promise.all([
+        api.get<FileMsg[]>("/files"),
+        spacesApi.sessions().catch(() => [] as SpaceSession[]),
+      ]);
       setFiles(data);
+      setSessions(sess);
     } finally {
       setLoading(false);
     }
@@ -109,26 +115,40 @@ export default function FilesScreen() {
         </View>
       ) : section === "Categories" && !activeCat ? (
         <ScrollView contentContainerStyle={styles.catGrid}>
-          {CATEGORIES.map((c) => {
-            const count = files.filter((f) => f.type === c.key).length;
+          {CATEGORIES.map((cat) => {
+            const count = files.filter((f) => f.type === cat.key).length;
             return (
               <Pressable
-                key={c.key}
-                onPress={() => setActiveCat(c.key)}
+                key={cat.key}
+                onPress={() => setActiveCat(cat.key)}
                 style={({ pressed }) => [
                   styles.catCard,
                   pressed && { transform: [{ scale: 0.98 }] },
                 ]}
-                testID={`category-${c.key}`}
+                testID={`category-${cat.key}`}
               >
                 <View style={styles.catIcon}>
-                  <Ionicons name={c.icon} size={26} color={c.primaryDark} />
+                  <Ionicons name={cat.icon} size={26} color={c.primaryDark} />
                 </View>
-                <Text style={styles.catLabel}>{c.label}</Text>
+                <Text style={styles.catLabel}>{cat.label}</Text>
                 <Text style={styles.catCount}>{count} items</Text>
               </Pressable>
             );
           })}
+          <Pressable
+            onPress={() => setSection("Sessions")}
+            style={({ pressed }) => [
+              styles.catCard,
+              pressed && { transform: [{ scale: 0.98 }] },
+            ]}
+            testID="category-sessions"
+          >
+            <View style={styles.catIcon}>
+              <Ionicons name="planet-outline" size={26} color={c.primaryDark} />
+            </View>
+            <Text style={styles.catLabel}>Sessions</Text>
+            <Text style={styles.catCount}>{sessions.length} shared moments</Text>
+          </Pressable>
         </ScrollView>
       ) : section === "By person" ? (
         <FlatList
@@ -147,6 +167,16 @@ export default function FilesScreen() {
             </View>
           )}
           ListEmptyComponent={<EmptyHint label="No shared files yet." />}
+        />
+      ) : section === "Sessions" ? (
+        <FlatList
+          data={sessions}
+          keyExtractor={(s) => s.id}
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => <SessionRow session={item} />}
+          ListEmptyComponent={
+            <EmptyHint label="Past shared sessions will collect here." />
+          }
         />
       ) : (
         <FlatList
@@ -201,6 +231,39 @@ function EmptyHint({ label }: { label: string }) {
   return (
     <View style={styles.empty}>
       <Text style={styles.emptyText}>{label}</Text>
+    </View>
+  );
+}
+
+function SessionRow({ session }: { session: SpaceSession }) {
+  const { c, f } = useTheme();
+  const styles = React.useMemo(() => makeStyles(c, f), [c, f]);
+  const mode = session.summary?.mode || "idle";
+  const title = session.summary?.title || session.space_name;
+  const when = session.summary?.ended_at
+    ? new Date(session.summary.ended_at).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+    : "";
+  return (
+    <View style={styles.fileRow}>
+      <View style={[styles.fileIcon, { backgroundColor: c.primaryBgSubtle }]}>
+        <Ionicons
+          name={mode === "video" ? "videocam-outline" : mode === "audio" ? "musical-notes-outline" : "planet-outline"}
+          size={20}
+          color={c.primaryDark}
+        />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.fileTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={styles.fileSub} numberOfLines={1}>
+          {session.space_name} · {mode === "video" ? "watched together" : mode === "audio" ? "listened together" : "session"}
+        </Text>
+      </View>
+      <Text style={styles.fileDate}>{when}</Text>
     </View>
   );
 }

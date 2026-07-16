@@ -31,8 +31,10 @@ import {
   Space,
   SpaceMessage,
   AudioTrack,
+  AudioUpload,
   openSpaceSocket,
 } from "../../src/spaces";
+import * as DocumentPicker from "expo-document-picker";
 import { useTheme } from "../../src/ThemeContext";
 import { useAuth } from "../../src/AuthContext";
 import { Palette, radius, spacing } from "../../src/theme";
@@ -217,6 +219,16 @@ export default function SpaceRoomScreen() {
     } catch {}
   }
 
+  async function handleSeek(newPositionSec: number) {
+    if (!space || !isHost) return;
+    try {
+      await spacesApi.setState(id!, {
+        is_playing: space.state.is_playing,
+        position_sec: Math.max(0, newPositionSec),
+      });
+    } catch {}
+  }
+
   async function setYoutube(url: string) {
     if (!url.trim()) return;
     setAddContent(false);
@@ -229,6 +241,13 @@ export default function SpaceRoomScreen() {
     setAddContent(false);
     try {
       await spacesApi.setContent(id!, { type: "audio", audio_id: track.id, title: track.title });
+    } catch {}
+  }
+
+  async function setUploadedAudio(upload: AudioUpload) {
+    setAddContent(false);
+    try {
+      await spacesApi.setContent(id!, { type: "audio", upload_id: upload.id, title: upload.title });
     } catch {}
   }
 
@@ -277,27 +296,30 @@ export default function SpaceRoomScreen() {
       {/* Main content area */}
       <View style={styles.content}>
         {space.mode === "video" && space.content?.type === "youtube" ? (
-          <View style={styles.videoWrap}>
-            {Platform.OS === "web" ? (
-              React.createElement("iframe", {
-                src: `https://www.youtube.com/embed/${(space.content as any).video_id}?autoplay=1&controls=1&rel=0&modestbranding=1&playsinline=1`,
-                style: { width: "100%", height: "100%", border: 0 },
-                allow: "autoplay; encrypted-media; fullscreen; picture-in-picture",
-                allowFullScreen: true,
-                "data-testid": "youtube-player",
-              })
-            ) : (
-              <WebView
-                ref={youtubeRef}
-                source={{ html: youtubeHtml((space.content as any).video_id) }}
-                style={styles.video}
-                allowsInlineMediaPlayback
-                mediaPlaybackRequiresUserAction={false}
-                javaScriptEnabled
-                onMessage={() => {}}
-                testID="youtube-player"
-              />
-            )}
+          <View style={{ width: "100%" }}>
+            <View style={styles.videoWrap}>
+              {Platform.OS === "web" ? (
+                React.createElement("iframe", {
+                  src: `https://www.youtube.com/embed/${(space.content as any).video_id}?autoplay=1&controls=1&rel=0&modestbranding=1&playsinline=1`,
+                  style: { width: "100%", height: "100%", border: 0 },
+                  allow: "autoplay; encrypted-media; fullscreen; picture-in-picture",
+                  allowFullScreen: true,
+                  "data-testid": "youtube-player",
+                })
+              ) : (
+                <WebView
+                  ref={youtubeRef}
+                  source={{ html: youtubeHtml((space.content as any).video_id) }}
+                  style={styles.video}
+                  allowsInlineMediaPlayback
+                  mediaPlaybackRequiresUserAction={false}
+                  javaScriptEnabled
+                  onMessage={() => {}}
+                  testID="youtube-player"
+                />
+              )}
+            </View>
+            <SeekBar space={space} isHost={isHost} onSeek={handleSeek} c={c} f={f} />
           </View>
         ) : space.mode === "audio" && space.content?.type === "audio" ? (
           <AudioVisual content={space.content as any} c={c} f={f} isPlaying={space.state.is_playing} />
@@ -391,6 +413,7 @@ export default function SpaceRoomScreen() {
         onClose={() => setAddContent(false)}
         onYoutube={setYoutube}
         onAudio={setAudio}
+        onUploadedAudio={setUploadedAudio}
         c={c}
         f={f}
       />
@@ -684,11 +707,101 @@ function ChatOverlay({
   );
 }
 
+function SeekBar({
+  space,
+  isHost,
+  onSeek,
+  c,
+  f,
+}: {
+  space: Space;
+  isHost: boolean;
+  onSeek: (positionSec: number) => void;
+  c: Palette;
+  f: any;
+}) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    if (!space.state.is_playing) return;
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [space.state.is_playing]);
+
+  const duration = (space.content as any)?.duration_sec || 0;
+  const elapsed = (now - new Date(space.state.updated_at).getTime()) / 1000;
+  const current =
+    space.state.position_sec + (space.state.is_playing ? Math.max(0, elapsed) : 0);
+  const pct = duration > 0 ? Math.min(1, current / duration) : 0;
+  const fmt = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <View style={{ paddingHorizontal: spacing.md, paddingTop: 8, paddingBottom: 4 }}>
+      <View
+        style={{
+          height: 4,
+          borderRadius: 2,
+          backgroundColor: c.surfaceElevated,
+          overflow: "hidden",
+        }}
+        onStartShouldSetResponder={() => isHost}
+        onResponderRelease={(e) => {
+          if (!isHost || !duration) return;
+          const w = e.nativeEvent.locationX;
+          const targetLayout = (e.currentTarget as any)?._nativeTag;
+          void targetLayout;
+          // Layout width fallback via measure — use screen approximation
+          const barWidth = e.currentTarget && (e as any).currentTarget?.offsetWidth
+            ? (e as any).currentTarget.offsetWidth
+            : e.nativeEvent.pageX
+              ? Math.max(1, e.nativeEvent.pageX / (w / Math.max(0.001, e.nativeEvent.locationX)))
+              : 300;
+          const clampedPct = Math.max(0, Math.min(1, w / barWidth));
+          onSeek(clampedPct * duration);
+        }}
+        testID="video-seek-bar"
+      >
+        <View style={{ width: `${pct * 100}%`, height: "100%", backgroundColor: c.primary }} />
+      </View>
+      <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}>
+        <Text style={{ fontFamily: f.body, fontSize: 11, color: c.textSecondary }}>
+          {fmt(current)}
+        </Text>
+        <Text style={{ fontFamily: f.body, fontSize: 11, color: c.textSecondary }}>
+          {duration ? fmt(duration) : "live"}
+        </Text>
+      </View>
+      {isHost ? (
+        <View style={{ flexDirection: "row", justifyContent: "center", gap: 12, marginTop: 6 }}>
+          <Pressable
+            onPress={() => onSeek(Math.max(0, current - 10))}
+            style={{ padding: 6 }}
+            testID="seek-back-10"
+          >
+            <Ionicons name="play-back" size={16} color={c.textSecondary} />
+          </Pressable>
+          <Pressable
+            onPress={() => onSeek(current + 10)}
+            style={{ padding: 6 }}
+            testID="seek-fwd-10"
+          >
+            <Ionicons name="play-forward" size={16} color={c.textSecondary} />
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
 function AddContentModal({
   visible,
   onClose,
   onYoutube,
   onAudio,
+  onUploadedAudio,
   c,
   f,
 }: {
@@ -696,21 +809,66 @@ function AddContentModal({
   onClose: () => void;
   onYoutube: (url: string) => void;
   onAudio: (track: AudioTrack) => void;
+  onUploadedAudio: (upload: AudioUpload) => void;
   c: Palette;
   f: any;
 }) {
   const [tab, setTab] = useState<"video" | "audio">("video");
+  const [audioSubtab, setAudioSubtab] = useState<"library" | "yours">("library");
   const [url, setUrl] = useState("");
   const [tracks, setTracks] = useState<AudioTrack[]>([]);
+  const [uploads, setUploads] = useState<AudioUpload[]>([]);
   const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const styles = React.useMemo(() => makeStyles(c, f), [c, f]);
 
   useEffect(() => {
-    if (visible && tab === "audio" && tracks.length === 0) {
+    if (visible && tab === "audio" && audioSubtab === "library" && tracks.length === 0) {
       setLoading(true);
       spacesApi.audioLibrary().then(setTracks).finally(() => setLoading(false));
     }
-  }, [visible, tab, tracks.length]);
+    if (visible && tab === "audio" && audioSubtab === "yours") {
+      setLoading(true);
+      spacesApi.audioUploads().then(setUploads).finally(() => setLoading(false));
+    }
+  }, [visible, tab, audioSubtab, tracks.length]);
+
+  async function pickAndUpload() {
+    if (uploading) return;
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        type: "audio/*",
+        copyToCacheDirectory: true,
+      });
+      if (res.canceled || !res.assets?.[0]) return;
+      const a = res.assets[0];
+      // rough size guard on client
+      if (a.size && a.size > 10 * 1024 * 1024) {
+        alert("Please pick an audio file under 10MB.");
+        return;
+      }
+      setUploading(true);
+      // Read as base64
+      const resp = await fetch(a.uri);
+      const blob = await resp.blob();
+      const data_url: string = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onerror = () => reject(new Error("read failed"));
+        r.onload = () => resolve(r.result as string);
+        r.readAsDataURL(blob);
+      });
+      const title = a.name?.replace(/\.[^.]+$/, "") || "Uploaded audio";
+      await spacesApi.uploadAudio(title, data_url);
+      // Refresh list
+      const fresh = await spacesApi.audioUploads();
+      setUploads(fresh);
+      setAudioSubtab("yours");
+    } catch (e) {
+      // best-effort
+    } finally {
+      setUploading(false);
+    }
+  }
 
   return (
     <Modal transparent visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -770,32 +928,105 @@ function AddContentModal({
             </Pressable>
           </View>
         ) : (
-          <ScrollView style={{ maxHeight: 360 }}>
-            {loading ? (
-              <ActivityIndicator color={c.primary} style={{ margin: spacing.lg }} />
-            ) : (
-              tracks.map((t) => (
-                <Pressable
-                  key={t.id}
-                  onPress={() => onAudio(t)}
-                  style={({ pressed }) => [
-                    styles.trackRow,
-                    pressed && { backgroundColor: c.primaryBgSubtle },
-                  ]}
-                  testID={`track-${t.id}`}
-                >
-                  <View style={styles.trackCover}>
-                    <Text style={{ fontSize: 22 }}>{t.cover_emoji}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.trackTitle}>{t.title}</Text>
-                    <Text style={styles.trackArtist}>{t.artist}</Text>
-                  </View>
-                  <Ionicons name="play" size={18} color={c.primary} />
-                </Pressable>
-              ))
-            )}
-          </ScrollView>
+          <View>
+            {/* Library / Yours sub-tabs + Upload */}
+            <View style={[styles.segmentRow, { marginBottom: spacing.sm }]}>
+              <Pressable
+                onPress={() => setAudioSubtab("library")}
+                style={[styles.pillSegment, audioSubtab === "library" && styles.pillOn]}
+                testID="audio-subtab-library"
+              >
+                <Text style={[styles.pillText, audioSubtab === "library" && styles.pillTextOn]}>
+                  Curated
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setAudioSubtab("yours")}
+                style={[styles.pillSegment, audioSubtab === "yours" && styles.pillOn]}
+                testID="audio-subtab-yours"
+              >
+                <Text style={[styles.pillText, audioSubtab === "yours" && styles.pillTextOn]}>
+                  Your uploads
+                </Text>
+              </Pressable>
+              <View style={{ flex: 1 }} />
+              <Pressable
+                onPress={pickAndUpload}
+                disabled={uploading}
+                style={({ pressed }) => [
+                  styles.uploadBtn,
+                  uploading && { opacity: 0.6 },
+                  pressed && { transform: [{ scale: 0.96 }] },
+                ]}
+                testID="audio-upload-btn"
+              >
+                {uploading ? (
+                  <ActivityIndicator color={c.textInverse} size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="cloud-upload-outline" size={14} color={c.textInverse} />
+                    <Text style={styles.uploadBtnText}>Upload</Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {loading ? (
+                <ActivityIndicator color={c.primary} style={{ margin: spacing.lg }} />
+              ) : audioSubtab === "library" ? (
+                tracks.map((t) => (
+                  <Pressable
+                    key={t.id}
+                    onPress={() => onAudio(t)}
+                    style={({ pressed }) => [
+                      styles.trackRow,
+                      pressed && { backgroundColor: c.primaryBgSubtle },
+                    ]}
+                    testID={`track-${t.id}`}
+                  >
+                    <View style={styles.trackCover}>
+                      <Text style={{ fontSize: 22 }}>{t.cover_emoji}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.trackTitle}>{t.title}</Text>
+                      <Text style={styles.trackArtist}>{t.artist}</Text>
+                    </View>
+                    <Ionicons name="play" size={18} color={c.primary} />
+                  </Pressable>
+                ))
+              ) : uploads.length === 0 ? (
+                <View style={{ padding: spacing.lg, alignItems: "center" }}>
+                  <Text style={{ color: c.textSecondary, fontFamily: f.body, textAlign: "center" }}>
+                    No uploads yet. Tap Upload to add an audio file.
+                  </Text>
+                </View>
+              ) : (
+                uploads.map((u) => (
+                  <Pressable
+                    key={u.id}
+                    onPress={() => onUploadedAudio(u)}
+                    style={({ pressed }) => [
+                      styles.trackRow,
+                      pressed && { backgroundColor: c.primaryBgSubtle },
+                    ]}
+                    testID={`upload-${u.id}`}
+                  >
+                    <View style={styles.trackCover}>
+                      <Text style={{ fontSize: 22 }}>{u.cover_emoji || "🎙"}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.trackTitle}>{u.title}</Text>
+                      <Text style={styles.trackArtist}>
+                        {u.uploader_name}
+                        {u.duration_sec ? ` · ${Math.round(u.duration_sec)}s` : ""}
+                      </Text>
+                    </View>
+                    <Ionicons name="play" size={18} color={c.primary} />
+                  </Pressable>
+                ))
+              )}
+            </ScrollView>
+          </View>
         )}
       </View>
     </Modal>
@@ -983,6 +1214,25 @@ const makeStyles = (c: Palette, f: any) =>
     segmentOn: { backgroundColor: c.primary },
     segmentText: { fontFamily: f.bodyMedium, fontSize: 13, color: c.textSecondary },
     segmentTextOn: { color: c.textInverse },
+    pillSegment: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: c.surface,
+    },
+    pillOn: { backgroundColor: c.primaryBgSubtle },
+    pillText: { fontFamily: f.bodyMedium, fontSize: 12, color: c.textSecondary },
+    pillTextOn: { color: c.primaryDark },
+    uploadBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: c.primary,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+    },
+    uploadBtnText: { color: c.textInverse, fontFamily: f.bodyBold, fontSize: 12 },
     input: {
       height: 52,
       backgroundColor: c.surface,

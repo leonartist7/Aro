@@ -68,8 +68,10 @@ export const spacesApi = {
   get: (id: string) => api.get<Space>(`/spaces/${id}`),
   join: (id: string) => api.post<Space>(`/spaces/${id}/join`),
   leave: (id: string) => api.post<{ ok: boolean }>(`/spaces/${id}/leave`),
-  setContent: (id: string, body: { type: "youtube" | "audio"; url?: string; audio_id?: string; title?: string }) =>
-    api.post(`/spaces/${id}/content`, body),
+  setContent: (
+    id: string,
+    body: { type: "youtube" | "audio"; url?: string; audio_id?: string; upload_id?: string; title?: string },
+  ) => api.post(`/spaces/${id}/content`, body),
   setState: (id: string, body: { is_playing: boolean; position_sec: number }) =>
     api.post<SpaceState>(`/spaces/${id}/state`, body),
   listMessages: (id: string) => api.get<SpaceMessage[]>(`/spaces/${id}/messages`),
@@ -78,6 +80,30 @@ export const spacesApi = {
   reaction: (id: string, emoji: string) =>
     api.post<{ ok: boolean }>(`/spaces/${id}/reactions`, { emoji }),
   audioLibrary: () => api.get<AudioTrack[]>("/audio/library"),
+  audioUploads: () => api.get<AudioUpload[]>("/audio/uploads"),
+  uploadAudio: (title: string, data_url: string, duration_sec?: number) =>
+    api.post<{ id: string; title: string }>("/audio/uploads", { title, data_url, duration_sec }),
+  sessions: () => api.get<SpaceSession[]>("/space-sessions"),
+};
+
+export type AudioUpload = {
+  id: string;
+  uploader_id: string;
+  uploader_name: string;
+  title: string;
+  duration_sec?: number | null;
+  cover_emoji?: string;
+  created_at: string;
+};
+
+export type SpaceSession = {
+  id: string;
+  space_id: string;
+  space_name: string;
+  summary: { title: string; mode: string; ended_at: string };
+  content: any;
+  members: string[];
+  created_at: string;
 };
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL!;

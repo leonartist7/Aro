@@ -592,7 +592,14 @@ class SpaceContentIn(BaseModel):
     type: Literal["youtube", "audio"]
     url: Optional[str] = None
     audio_id: Optional[str] = None
+    upload_id: Optional[str] = None  # user-uploaded audio
     title: Optional[str] = None
+
+
+class AudioUploadIn(BaseModel):
+    title: str
+    data_url: str  # base64 data URL
+    duration_sec: Optional[float] = None
 
 
 class SpaceStateIn(BaseModel):
@@ -612,6 +619,46 @@ class SpaceReactionIn(BaseModel):
 @api.get("/audio/library")
 async def audio_library(current=Depends(get_current_user)):
     return AUDIO_LIBRARY
+
+
+@api.get("/audio/uploads")
+async def list_audio_uploads(current=Depends(get_current_user)):
+    """User's uploaded audio files (metadata only, no base64 payload)."""
+    uploads = await db.audio_uploads.find(
+        {"uploader_id": current["id"]},
+        {"_id": 0, "data_url": 0},
+    ).sort("created_at", -1).to_list(200)
+    return uploads
+
+
+@api.get("/audio/uploads/{upload_id}")
+async def get_audio_upload(upload_id: str, current=Depends(get_current_user)):
+    """Fetch full audio upload (with base64) — used for playback."""
+    u = await db.audio_uploads.find_one({"id": upload_id}, {"_id": 0})
+    if not u:
+        raise HTTPException(status_code=404, detail="Upload not found")
+    return u
+
+
+@api.post("/audio/uploads")
+async def upload_audio(payload: AudioUploadIn, current=Depends(get_current_user)):
+    if not payload.data_url.startswith("data:"):
+        raise HTTPException(status_code=400, detail="Must be a data URL")
+    # rough size guard: reject > 14MB base64 (~10MB binary) to stay under Mongo doc limit
+    if len(payload.data_url) > 14 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Audio is too large (max ~10MB)")
+    doc = {
+        "id": str(uuid.uuid4()),
+        "uploader_id": current["id"],
+        "uploader_name": current["name"],
+        "title": payload.title.strip() or "Untitled audio",
+        "data_url": payload.data_url,
+        "duration_sec": payload.duration_sec,
+        "cover_emoji": "🎙",
+        "created_at": now_iso(),
+    }
+    await db.audio_uploads.insert_one(doc)
+    return {"id": doc["id"], "title": doc["title"], "duration_sec": doc["duration_sec"]}
 
 
 @api.post("/spaces")
@@ -749,18 +796,35 @@ async def set_space_content(space_id: str, payload: SpaceContentIn, current=Depe
         }
         mode = "video"
     else:  # audio
-        track = next((a for a in AUDIO_LIBRARY if a["id"] == payload.audio_id), None)
-        if not track:
-            raise HTTPException(status_code=400, detail="Audio track not found")
-        content = {
-            "type": "audio",
-            "audio_id": track["id"],
-            "url": track["url"],
-            "title": track["title"],
-            "artist": track["artist"],
-            "cover_emoji": track["cover_emoji"],
-            "duration_sec": track["duration_sec"],
-        }
+        # Uploaded audio takes precedence if provided
+        if payload.upload_id:
+            up = await db.audio_uploads.find_one({"id": payload.upload_id}, {"_id": 0})
+            if not up:
+                raise HTTPException(status_code=400, detail="Audio upload not found")
+            content = {
+                "type": "audio",
+                "source": "upload",
+                "upload_id": up["id"],
+                "url": up["data_url"],
+                "title": up["title"],
+                "artist": up.get("uploader_name") or "You",
+                "cover_emoji": up.get("cover_emoji", "🎙"),
+                "duration_sec": up.get("duration_sec"),
+            }
+        else:
+            track = next((a for a in AUDIO_LIBRARY if a["id"] == payload.audio_id), None)
+            if not track:
+                raise HTTPException(status_code=400, detail="Audio track not found")
+            content = {
+                "type": "audio",
+                "source": "library",
+                "audio_id": track["id"],
+                "url": track["url"],
+                "title": track["title"],
+                "artist": track["artist"],
+                "cover_emoji": track["cover_emoji"],
+                "duration_sec": track["duration_sec"],
+            }
         mode = "audio"
     state = {
         "is_playing": True,

@@ -1,0 +1,48 @@
+{
+  "summary": "Phase-2.1 testing (backend + frontend). Backend: 53/53 pytest cases pass — 22 Phase-1 regression + 18 Phase-2 Spaces + 13 new Phase-2.1 (audio uploads CRUD + list-excludes-payload + single-returns-data_url + upload-based space content + upload_id-wins-over-audio_id + curated-still-works + space-sessions regression). Frontend: logged in as Ava (mobile viewport 390x844) — Files tab now shows all 4 segments (Recent / By person / Categories / Sessions), Sessions segment renders 3 real sessions (Rain & Jazz, Long Walk, YouTube video) each with mode-appropriate icon, Categories grid contains the category-sessions card which switches to the Sessions segment on tap. Entering a Space room → space-add-content → add-tab-audio reveals audio-subtab-library (all 4 curated track testIDs present: rain-jazz, long-walk, warm-light, old-letters), audio-subtab-yours (3 uploads rendered as upload-<id>), and audio-upload-btn (Upload button — taps cleanly on web, does not crash the app, document picker dialog does not appear on web preview which is expected). Watch Together: after posting a YouTube URL, video-seek-bar + seek-back-10 + seek-fwd-10 all render, and tapping seek-fwd-10 POSTs /api/spaces/{id}/state with position_sec exactly 10s ahead of current (verified: 33.01s → 43.01s and inverse for back). One design/layout issue: seek bar row is positioned OUTSIDE the mobile viewport (y=962 on a 390x844 screen) so real users cannot actually reach the ±10s buttons.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "space/[id] SeekBar row", "issue": "Seek bar + ±10s buttons render at y≈962 on a 390x844 mobile viewport (i.e. ~118px BELOW the visible fold). Because the Watch Together screen is fixed-height and does not scroll, users cannot see or tap video-seek-bar / seek-back-10 / seek-fwd-10 on-device. Elements are functionally correct — Playwright-scripted taps via JS produced the expected POST /state with position_sec ±10s — but they are visually inaccessible.", "testID": "video-seek-bar / seek-back-10 / seek-fwd-10", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "space/[id] (Watch Together)", "issues": ["Seek bar row rendered below viewport fold — needs to be moved above the reactions/exit action strip or the layout needs to make the video area shorter so seek controls sit inside the visible 844px height."]}
+    ],
+    "react_native_issues": [
+      {"component": "expo-av (from console warning)", "issue": "Console warning: '[expo-av]: Expo AV has been deprecated and will be removed in SDK 54. Use the expo-audio and expo-video packages to replace the required functionality.' Reference: /app/frontend package (search for `expo-av` in package.json / imports)."},
+      {"component": "props.pointerEvents (RN deprecation)", "issue": "Console warning: 'props.pointerEvents is deprecated. Use style.pointerEvents' — non-blocking but should be migrated."},
+      {"component": "shadow* style props (RN deprecation)", "issue": "Console warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' — cosmetic, carried over from prior iterations."}
+    ]
+  },
+  "test_report_links": [
+    "/app/test_reports/iteration_5.json",
+    "/app/test_reports/pytest/iteration_5.xml",
+    "/app/test_reports/pytest/iteration_5_phase21.xml",
+    "/app/backend/tests/test_phase21_uploads.py",
+    "/app/backend/tests/test_spaces_api.py",
+    "/app/backend/tests/test_connect_api.py"
+  ],
+  "action_items": [
+    "HIGH — Reposition the video-seek-bar row inside the Watch Together screen so it sits inside the mobile viewport (≤844px on a 390-wide device). Currently the row anchors below the video and below the action strip and gets pushed off-screen. Either shrink the video area, insert the seek row above the reactions/exit strip, or make the screen scrollable.",
+    "MEDIUM — Migrate off expo-av to expo-audio (audio playback) and expo-video (video playback); expo-av will be removed in SDK 54.",
+    "LOW — Replace props.pointerEvents with style.pointerEvents (RN deprecation warning).",
+    "LOW — Replace shadow* style props with boxShadow (carried over)."
+  ],
+  "critical_code_review_comments": [
+    "server.py has grown to ~1000 lines and now mixes auth/chats/spaces/audio. Consider splitting into APIRouter modules (auth.py, chats.py, spaces.py, audio.py) — non-blocking.",
+    "audio_uploads stores full base64 data_url inside the space content when a user picks an uploaded track (see /api/spaces/{id}/content upload branch). This means space snapshot payloads can be up to ~10MB after an upload is selected. Snapshot broadcast via WebSocket will send this to every joining peer. Consider referencing the upload by id and letting clients fetch /api/audio/uploads/{id} on demand, or capping duration/size more tightly.",
+    "SeekBar component in space/[id].tsx computes bar width from e.nativeEvent.pageX / locationX ratio (line ~757) as a fallback — that math produces incorrect scrub positions on web. The ±10s buttons remain the primary UX (agreed with the agent-to-agent note), but if we want tap-to-scrub on web later, we'll need onLayout to measure barWidth once and store in state.",
+    "list endpoint /api/audio/uploads correctly excludes data_url via projection {'_id':0,'data_url':0}. Test confirms no leakage.",
+    "Space content upload branch does not require the uploader to be the current user — any space member can attach ANY upload by id (even someone else's). Fine for a trusted demo, but worth flagging for future access control."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_phase21_uploads.py (new — 13 pytest cases)"
+  ],
+  "success_rate": {"backend": "100% (53/53 pytest — 22 Phase-1 + 18 Phase-2 + 13 Phase-2.1)", "frontend": "~90% (all testIDs render and integrate correctly with backend; primary blocker is off-viewport seek bar which prevents real users from using the ±10s scrub feature)"},
+  "seed_data_creation": "Backend tests created several TEST-prefixed audio_uploads docs (title 'TEST phase21 clip') and TEST spaces ('TEST phase21 upload space', 'TEST Ava+Leo'). Frontend test filled a YouTube URL into an existing space (TEST Ava+Leo). Residual data is limited to test_reports uploads and one YouTube content on an existing test space — safe to leave.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend: run `pytest /app/backend/tests/ -v` — all 53 pass in ~6s. Phase-2.1 file is test_phase21_uploads.py (13 cases). Frontend: login = ava@connect.app / connect123. Space room rows use testID='room-row-<space_id>' (spaces tab), NOT 'space-card-*'. Watch Together seek bar exists in DOM but sits at y≈962 on 390x844 viewport — Playwright must call `page.evaluate(\"(el) => el.click()\", element)` or scroll manually to interact; force=True click fails with 'outside of viewport'. YouTube WebView still cannot render on web preview (react-native-webview limitation). Uploads endpoint returns list WITHOUT data_url (metadata only) and single-item endpoint returns FULL doc including data_url — verified.",
+  "rca_of_issue": "video-seek-bar off-viewport RCA: In /app/frontend/app/space/[id].tsx the SeekBar component (~line 720+) is placed AFTER the video/YouTube player area and BEFORE the reactions/action strip inside a screen that is not scrollable. The video/player area consumes the majority of the vertical space, and combined with the 5-button action strip at the bottom, the seek row (bar + ±10s buttons + position/duration text ≈ 30-40px) gets pushed below y=844 on a standard mobile viewport. Fix options: (a) reduce the video area's max height (e.g. aspect-ratio 16/9 within a bounded container), (b) move the seek row so it overlays the bottom of the video (absolute-positioned above the action strip), or (c) make the screen scrollable when in Watch Together mode. Reproduction: login as ava, enter any space, set YouTube content, then check any seek testID's bounding_box — y will exceed viewport height."
+}
