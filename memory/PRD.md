@@ -1,55 +1,66 @@
-# Connect — Phase 1 MVP
+# Connect — Phase 2 (Spaces) Build
 
-A warm, calm, low-blue-light 1:1 messaging app built with Expo (React Native) + FastAPI + MongoDB.
+A warm, calm, low-blue-light shared-presence platform built on Expo (React Native) + FastAPI + MongoDB + WebSockets.
 
-## Phase 1 Scope (shipped — v0.2)
+## Phase 2 Scope (shipped — v0.3 / "Spaces")
 
-- Email/password auth (JWT, bcrypt) with session persistence (AsyncStorage)
-- **Bottom nav redesign (v0.2)**: `Home · Files · [+] · Calls · Spaces` with a raised center FAB.
-  - Tap `+` → Quick Message card (bottom sheet) with horizontal contact circles + inline text input
-  - Long-press `+` → animated upward-arc radial menu with 4 nodes
-- **Top-left profile avatar** on every tab → opens `/you` as a standalone screen
-- 1:1 chat with text, voice messages, images, files
-  - "Start a shared space" pill (Phase 2 placeholder, non-functional)
-  - Polling every 4s for new messages (websocket-ready)
-- Files hub: Recent / By person / Categories (Images, Documents, Audio)
-- Calls tab: history + mocked call screen with pulsing rings
-- **Spaces tab** (new): Phase-2 placeholder with hero + feature cards + "nudge me" waitlist CTA
-- `/you`: profile, settings rows, sign out
-- **`/appearance` (new)**: visual theme picker with live preview
-  - 4 palette presets: **Warm** (default), **Dune**, **Evening**, **Charcoal**
-  - 3 typography pairs: **Fraunces · DM Sans**, **Fraunces all the way**, **DM Sans only**
-  - Choices persist in AsyncStorage, apply live across every screen
+### Spaces tab (upgraded from placeholder)
+- **Active Now** — horizontal cards with activity badge (Watching / Listening), title, content preview, stacked active-member avatars
+- **Your Rooms** — persistent saved spaces with members
+- **Create Space** — prominent soft card
 
-## Architecture for Phase 2 (Spaces)
+### Create Space flow (`/space/create`)
+- Optional name + multi-select people picker → "Enter Space"
 
-- `chats` collection has a `type` field (`"dm"` today; `"space"` in future) — messaging API serves both.
-- Bottom tab nav is data-driven — Spaces tab already exists; opening a real Space is the only new code.
-- Chat screen already renders a "Start a shared space" pill placeholder.
-- Messages are room-based via `chat_id`, so multi-user rooms reuse `/api/chats/{id}/messages` unchanged.
+### Space Room (`/space/[id]`) — the core experience
+- Floating header (back, title, "N people together", avatar stack)
+- **Watch Together (YouTube)** via `react-native-webview` + iframe API; on web preview, falls back to a real `<iframe>`
+- **Listen Together (Audio)** via `expo-av` Sound; album-style cover with a soft pulse animation while playing
+- **Idle hero** when no content is loaded ("The room is open. Add a video or song…")
+- **Floating bottom controls**: Add Content (+), Play / Pause (host-locked), Reactions ♥, Chat 💬, Leave
+- **Add Content sheet** — bottom-sheet modal with two tabs: YouTube URL paste, Curated Audio (4 tracks)
+- **Reactions** — 6-emoji strip; reactions float upward with stagger + fade animation, broadcast to all members
+- **Presence toasts** — gentle fading text overlays ("Leo joined", "Indie paused")
+- **Chat overlay** — sliding bottom sheet with bubbles, composer, real-time delivery via WebSocket
+- **Leave** — saves a session memory entry once the last person leaves
 
-## Theming architecture
+### Real-time sync
+- FastAPI `WebSocket /api/ws/spaces/{id}?token=<JWT>`
+- Server is the source of truth: `{is_playing, position_sec, host_id, updated_at}`
+- Clients project current position as `position_sec + (now - updated_at)` while playing — drift-resilient
+- Snapshot pushed on connect; subsequent broadcasts: `presence`, `content`, `state`, `message`, `reaction`
 
-- `src/theme.ts` exports 4 `Palette` presets + 3 `FontPair` presets.
-- `src/ThemeContext.tsx` provides `useTheme()` → `{ c, f, themeName, setTheme, fontKey, setFontKey }`.
-- Every screen uses the `makeStyles(c, f)` pattern with `useMemo` so theme changes re-style instantly.
-- Selection persists in AsyncStorage (`connect_theme`, `connect_font`).
+### Chat integration
+- The "Start a shared space" pill in `/chat/[id]` is now functional — creates a space, sends a `space_invite` message, opens the room
+- `space_invite` messages render as a **Join Space card** that re-opens the room when tapped
 
-## Tech
+### File integration / Session memory
+- Each non-text message is already aggregated into the **Files** tab (Phase 1)
+- Once the last member leaves a space with content, a `space_session` document is created with `{title, mode, ended_at, content}` (foundation for a future "Sessions" category in Files)
 
-- **Frontend**: Expo SDK 54, expo-router, react-native-reanimated (radial + call ring animations), AsyncStorage, Ionicons, Fraunces (heading) + DM Sans (body)
-- **Backend**: FastAPI + Motor (MongoDB), bcrypt, PyJWT
-- **Storage**: base64 in MongoDB for the MVP
-- **Calling**: mocked UI flow (no real audio stream)
+## API surface (Phase 2 additions)
+- `POST/GET /api/spaces`  ·  `GET /api/spaces/{id}`
+- `POST /api/spaces/{id}/{join,leave,content,state,messages,reactions}`
+- `GET /api/spaces/{id}/messages`
+- `GET /api/audio/library` (4 curated tracks)
+- `WS /api/ws/spaces/{id}?token=`
+
+## Tested
+- Backend: **40/40 pytest** (22 Phase-1 regression + 18 new Spaces, including 2 async WebSocket cases)
+- Frontend: full create → enter → add content → play → reactions → chat → leave walk-through
+
+## Known limitations / deferred
+- User audio upload — deferred to Phase 2.1 (curated tracks ship now)
+- Web preview does not run the YouTube iframe API for sync (real iframe shows the video, but play/pause sync is mobile-only). Mobile builds get full sync.
+- Multi-step seek scrubbing UI — playback is host-controlled play/pause (matches spec), no seek bar yet
 
 ## Demo accounts
-
 See `/app/memory/test_credentials.md`.
 
-## Phase 2 candidates
-
-- Real-time websockets
-- Spaces (multi-user shared rooms with shared media playback + presence)
-- Real WebRTC voice/video
-- Push notifications
-- End-to-end encryption
+## Phase 2.x candidates
+- User audio upload + storage
+- "Sessions" category in Files tab
+- Seek bar in Watch Together
+- Push notifications when an active member joins
+- Real WebRTC for the existing voice-call flow
+- Public/discoverable spaces (intentionally NOT in this phase)

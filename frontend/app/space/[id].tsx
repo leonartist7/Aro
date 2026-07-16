@@ -278,16 +278,26 @@ export default function SpaceRoomScreen() {
       <View style={styles.content}>
         {space.mode === "video" && space.content?.type === "youtube" ? (
           <View style={styles.videoWrap}>
-            <WebView
-              ref={youtubeRef}
-              source={{ html: youtubeHtml((space.content as any).video_id) }}
-              style={styles.video}
-              allowsInlineMediaPlayback
-              mediaPlaybackRequiresUserAction={false}
-              javaScriptEnabled
-              onMessage={() => {}}
-              testID="youtube-player"
-            />
+            {Platform.OS === "web" ? (
+              React.createElement("iframe", {
+                src: `https://www.youtube.com/embed/${(space.content as any).video_id}?autoplay=1&controls=1&rel=0&modestbranding=1&playsinline=1`,
+                style: { width: "100%", height: "100%", border: 0 },
+                allow: "autoplay; encrypted-media; fullscreen; picture-in-picture",
+                allowFullScreen: true,
+                "data-testid": "youtube-player",
+              })
+            ) : (
+              <WebView
+                ref={youtubeRef}
+                source={{ html: youtubeHtml((space.content as any).video_id) }}
+                style={styles.video}
+                allowsInlineMediaPlayback
+                mediaPlaybackRequiresUserAction={false}
+                javaScriptEnabled
+                onMessage={() => {}}
+                testID="youtube-player"
+              />
+            )}
           </View>
         ) : space.mode === "audio" && space.content?.type === "audio" ? (
           <AudioVisual content={space.content as any} c={c} f={f} isPlaying={space.state.is_playing} />

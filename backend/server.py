@@ -513,7 +513,11 @@ def _yt_id(url: str) -> Optional[str]:
     if not url:
         return None
     m = re.search(r"(?:youtu\.be/|youtube\.com/(?:watch\?v=|embed/|v/|shorts/))([\w-]{11})", url)
-    return m.group(1) if m else None
+    if m:
+        return m.group(1)
+    # Accept bare 11-char id
+    m2 = re.fullmatch(r"[\w-]{11}", url.strip())
+    return m2.group(0) if m2 else None
 
 
 # WebSocket connection pool, keyed by space id
