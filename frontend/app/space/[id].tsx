@@ -1056,8 +1056,8 @@ const makeStyles = (c: Palette, f: any) =>
     headerSub: { fontFamily: f.body, fontSize: 11, color: c.textSecondary, marginTop: 2 },
     avatarStack: { flexDirection: "row", alignItems: "center" },
     stackedAvatar: { borderRadius: 999, borderWidth: 2, borderColor: c.bg },
-    content: { flex: 1, alignItems: "center", justifyContent: "center" },
-    videoWrap: { width: SCREEN_W, aspectRatio: 16 / 9, backgroundColor: "#000" },
+    content: { flex: 1, alignItems: "stretch", justifyContent: "center" },
+    videoWrap: { width: "100%", aspectRatio: 16 / 9, maxHeight: 320, backgroundColor: "#000", alignSelf: "center" },
     video: { flex: 1, backgroundColor: "#000" },
     presenceOverlay: {
       position: "absolute",
