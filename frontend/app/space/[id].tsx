@@ -25,7 +25,7 @@ import Animated, {
   withDelay,
   runOnJS,
 } from "react-native-reanimated";
-import { Audio } from "expo-av";
+import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from "expo-audio";
 import {
   spacesApi,
   Space,
@@ -60,7 +60,8 @@ export default function SpaceRoomScreen() {
   const [messages, setMessages] = useState<SpaceMessage[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const youtubeRef = useRef<WebView | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const soundRef = useRef<AudioPlayer | null>(null);
+  const soundUrlRef = useRef<string | null>(null);
   const lastJoinIdRef = useRef<string | null>(null);
 
   const isHost = space?.state.host_id === user?.id;
@@ -139,32 +140,40 @@ export default function SpaceRoomScreen() {
     };
   }, [id, load, addPresence, addReaction, user?.id]);
 
-  // Audio sync — drive expo-av Sound from server state
+  // Audio sync — drive expo-audio player from server state
   useEffect(() => {
     let cancelled = false;
     async function sync() {
       if (!space || space.mode !== "audio" || !space.content) return;
       const url = (space.content as any).url;
       if (!url) return;
-      // Setup sound only if not already loaded with this url
-      if (!soundRef.current) {
+      // Setup player only if URL changed
+      if (!soundRef.current || soundUrlRef.current !== url) {
         try {
-          await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: false });
+          await setAudioModeAsync({ playsInSilentMode: true });
         } catch {}
-        const { sound } = await Audio.Sound.createAsync({ uri: url }, { shouldPlay: false });
+        if (soundRef.current) {
+          try {
+            soundRef.current.remove();
+          } catch {}
+        }
+        const player = createAudioPlayer({ uri: url });
         if (cancelled) {
-          sound.unloadAsync();
+          try {
+            player.remove();
+          } catch {}
           return;
         }
-        soundRef.current = sound;
+        soundRef.current = player;
+        soundUrlRef.current = url;
       }
       try {
         // Project position
         const elapsed = (Date.now() - new Date(space.state.updated_at).getTime()) / 1000;
         const target = space.state.position_sec + (space.state.is_playing ? Math.max(0, elapsed) : 0);
-        await soundRef.current!.setPositionAsync(target * 1000);
-        if (space.state.is_playing) await soundRef.current!.playAsync();
-        else await soundRef.current!.pauseAsync();
+        await soundRef.current!.seekTo(target);
+        if (space.state.is_playing) soundRef.current!.play();
+        else soundRef.current!.pause();
       } catch {}
     }
     sync();
@@ -176,8 +185,11 @@ export default function SpaceRoomScreen() {
   useEffect(() => {
     return () => {
       if (soundRef.current) {
-        soundRef.current.unloadAsync().catch(() => {});
+        try {
+          soundRef.current.remove();
+        } catch {}
         soundRef.current = null;
+        soundUrlRef.current = null;
       }
     };
   }, []);
