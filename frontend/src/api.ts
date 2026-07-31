@@ -1,6 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Platform } from "react-native";
 
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
+const isDev = typeof (globalThis as any).__DEV__ !== "undefined" && (globalThis as any).__DEV__;
+const DEFAULT_BACKEND = isDev
+  ? Platform.OS === "android"
+    ? "http://10.0.2.2:8000"
+    : "http://127.0.0.1:8000"
+  : "https://connect-mvp.preview.emergentagent.com";
+const BASE = (process.env.EXPO_PUBLIC_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
 const TOKEN_KEY = "connect_token";
 
 export async function getToken(): Promise<string | null> {

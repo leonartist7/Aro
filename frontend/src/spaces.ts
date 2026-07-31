@@ -1,4 +1,5 @@
 // Spaces — API helpers, WebSocket client, types
+import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api, getToken, User } from "./api";
 
@@ -106,7 +107,13 @@ export type SpaceSession = {
   created_at: string;
 };
 
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL!;
+const isDev = typeof (globalThis as any).__DEV__ !== "undefined" && (globalThis as any).__DEV__;
+const DEFAULT_BACKEND = isDev
+  ? Platform.OS === "android"
+    ? "http://10.0.2.2:8000"
+    : "http://127.0.0.1:8000"
+  : "https://connect-mvp.preview.emergentagent.com";
+const BASE = (process.env.EXPO_PUBLIC_BACKEND_URL || DEFAULT_BACKEND).replace(/\/$/, "");
 
 export async function openSpaceSocket(
   spaceId: string,

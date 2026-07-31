@@ -19,11 +19,20 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
 
 # ---------- Config ----------
-MONGO_URL = os.environ["MONGO_URL"]
-DB_NAME = os.environ["DB_NAME"]
-JWT_SECRET = os.environ["JWT_SECRET"]
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("connect")
+
+MONGO_URL = os.environ.get("MONGO_URL", "mongodb://127.0.0.1:27017")
+DB_NAME = os.environ.get("DB_NAME", "connect")
+JWT_SECRET = os.environ.get("JWT_SECRET", "supersecret-dev-token")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL_MIN = 60 * 24 * 7  # 7 days for mobile convenience
+
+if not os.environ.get("MONGO_URL") or not os.environ.get("DB_NAME") or not os.environ.get("JWT_SECRET"):
+    logger.warning(
+        "Missing backend env vars. Using local development defaults from backend/.env.example. "
+        "Create backend/.env and set MONGO_URL, DB_NAME, and JWT_SECRET for a stable local backend."
+    )
 
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
@@ -31,9 +40,6 @@ db = client[DB_NAME]
 app = FastAPI(title="Connect API")
 api = APIRouter(prefix="/api")
 bearer_scheme = HTTPBearer(auto_error=False)
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger("connect")
 
 
 # ---------- Helpers ----------

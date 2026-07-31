@@ -8,7 +8,7 @@ import pytest
 import requests
 import websockets
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://connect-mvp.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "http://127.0.0.1:8000").rstrip("/")
 API = f"{BASE_URL}/api"
 WS_URL = BASE_URL.replace("https://", "wss://").replace("http://", "ws://") + "/api/ws/spaces"
 

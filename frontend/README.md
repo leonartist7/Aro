@@ -16,6 +16,20 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
    npx expo start
    ```
 
+3. If you are running the backend locally, point the app to it by setting `EXPO_PUBLIC_BACKEND_URL`.
+
+   ```bash
+   EXPO_PUBLIC_BACKEND_URL=http://127.0.0.1:8000 npx expo start
+   ```
+
+   If you are using an Android emulator, `127.0.0.1` should work. For a physical device, use your machine's local network IP.
+
+   Example:
+
+   ```bash
+   EXPO_PUBLIC_BACKEND_URL=http://192.168.1.100:8000 npx expo start
+   ```
+
 In the output, you'll find options to open the app in a
 
 - [development build](https://docs.expo.dev/develop/development-builds/introduction/)
