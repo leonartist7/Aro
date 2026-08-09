@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ export default function QuickMessage() {
   const router = useRouter();
   const { c, f } = useTheme();
   const styles = makeStyles(c, f);
+  const inputRef = useRef<TextInput>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [selected, setSelected] = useState<User | null>(null);
   const [text, setText] = useState("");
@@ -40,6 +41,8 @@ export default function QuickMessage() {
   useFocusEffect(
     useCallback(() => {
       load();
+      const t = setTimeout(() => inputRef.current?.focus(), 100);
+      return () => clearTimeout(t);
     }, [load]),
   );
 
@@ -130,14 +133,14 @@ export default function QuickMessage() {
           <Text style={styles.sectionLabel}>Message</Text>
           <View style={styles.inputRow}>
             <TextInput
+              ref={inputRef}
               value={text}
               onChangeText={setText}
-              placeholder={selected ? `Say hi to ${selected.name.split(" ")[0]}…` : "Pick someone above"}
+              placeholder={selected ? `Say hi to ${selected.name.split(" ")[0]}…` : "Type a message…"}
               placeholderTextColor={c.textTertiary}
               style={styles.input}
               multiline
               testID="quick-message-input"
-              editable={!!selected}
             />
             <Pressable
               onPress={sendIt}
