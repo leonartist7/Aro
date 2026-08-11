@@ -1,7 +1,7 @@
 // Connect — Theme presets (warm, low blue-light)
 // Exports presets + a simple type. The `useTheme()` hook lives in ThemeContext.
 
-export type ThemeName = "warm" | "dune" | "evening" | "charcoal";
+export type ThemeName = "warm" | "dune" | "honey" | "rose" | "sage" | "evening" | "charcoal" | "cocoa" | "moon";
 
 export type Palette = {
   bg: string;
@@ -66,6 +66,69 @@ const dune: Palette = {
   isDark: false,
 };
 
+// Honey — golden hour, warm amber and cream.
+const honey: Palette = {
+  bg: "#FBF6EC",
+  surface: "#F4EBD9",
+  surfaceElevated: "#EBDCC0",
+  overlay: "rgba(74, 56, 28, 0.4)",
+  primary: "#C9913D",
+  primaryDark: "#A8762E",
+  primaryLight: "#E0B96F",
+  primaryBgSubtle: "#F6EBD6",
+  text: "#4A3824",
+  textSecondary: "#9C8A6E",
+  textTertiary: "#BAA98B",
+  textInverse: "#FBF6EC",
+  border: "#E8DCC2",
+  error: "#C47365",
+  errorBg: "#F6E8E6",
+  success: "#7A8A5C",
+  isDark: false,
+};
+
+// Rose — soft blush and quiet mornings.
+const rose: Palette = {
+  bg: "#FDF8F6",
+  surface: "#F8ECE9",
+  surfaceElevated: "#F1DCD8",
+  overlay: "rgba(90, 45, 45, 0.4)",
+  primary: "#C77F8F",
+  primaryDark: "#A75F72",
+  primaryLight: "#E3B3BE",
+  primaryBgSubtle: "#F7E7E7",
+  text: "#4A3336",
+  textSecondary: "#9E8589",
+  textTertiary: "#BCA6AA",
+  textInverse: "#FDF8F6",
+  border: "#EDDCDD",
+  error: "#C05656",
+  errorBg: "#F8E3E1",
+  success: "#7A8A5C",
+  isDark: false,
+};
+
+// Sage — muted green calm, like a quiet garden.
+const sage: Palette = {
+  bg: "#F6F8F2",
+  surface: "#ECF0E6",
+  surfaceElevated: "#DEE4D2",
+  overlay: "rgba(48, 66, 44, 0.4)",
+  primary: "#7E8F68",
+  primaryDark: "#63734F",
+  primaryLight: "#A9BA93",
+  primaryBgSubtle: "#EDF1E3",
+  text: "#3A4032",
+  textSecondary: "#858C79",
+  textTertiary: "#A4AC97",
+  textInverse: "#F6F8F2",
+  border: "#DCE3D2",
+  error: "#C47365",
+  errorBg: "#F6E8E6",
+  success: "#5F8A5F",
+  isDark: false,
+};
+
 // Evening — dusk mode, deep walnut and muted brass.
 const evening: Palette = {
   bg: "#2B2520",
@@ -108,18 +171,70 @@ const charcoal: Palette = {
   isDark: true,
 };
 
+// Cocoa — deep chocolate, warm and enveloping.
+const cocoa: Palette = {
+  bg: "#241A12",
+  surface: "#35281D",
+  surfaceElevated: "#473728",
+  overlay: "rgba(0, 0, 0, 0.5)",
+  primary: "#D9B58B",
+  primaryDark: "#B79167",
+  primaryLight: "#EBD2B0",
+  primaryBgSubtle: "#473728",
+  text: "#F1E8DA",
+  textSecondary: "#BCAD98",
+  textTertiary: "#8A7B67",
+  textInverse: "#241A12",
+  border: "#473728",
+  error: "#D98F7A",
+  errorBg: "#4A332C",
+  success: "#A3AE88",
+  isDark: true,
+};
+
+// Moon — slate-blue night for late readers.
+const moon: Palette = {
+  bg: "#1B2026",
+  surface: "#262D35",
+  surfaceElevated: "#323B46",
+  overlay: "rgba(0, 0, 0, 0.55)",
+  primary: "#9FB6C9",
+  primaryDark: "#7D97AD",
+  primaryLight: "#BFD0DE",
+  primaryBgSubtle: "#323B46",
+  text: "#E8EDF2",
+  textSecondary: "#A7B3BE",
+  textTertiary: "#77838F",
+  textInverse: "#1B2026",
+  border: "#323B46",
+  error: "#D8897A",
+  errorBg: "#3C2A25",
+  success: "#9EB085",
+  isDark: true,
+};
+
 export const palettes: Record<ThemeName, Palette> = {
   warm,
   dune,
+  honey,
+  rose,
+  sage,
   evening,
   charcoal,
+  cocoa,
+  moon,
 };
 
 export const themeMeta: { name: ThemeName; label: string; tagline: string }[] = [
   { name: "warm", label: "Warm", tagline: "Cream and soft gold" },
   { name: "dune", label: "Dune", tagline: "Sun-warmed ivory" },
+  { name: "honey", label: "Honey", tagline: "Golden hour, always" },
+  { name: "rose", label: "Rose", tagline: "Blush and quiet mornings" },
+  { name: "sage", label: "Sage", tagline: "Soft green calm" },
   { name: "evening", label: "Evening", tagline: "Walnut and brass" },
   { name: "charcoal", label: "Charcoal", tagline: "Ink and parchment" },
+  { name: "cocoa", label: "Cocoa", tagline: "Deep, warm chocolate" },
+  { name: "moon", label: "Moon", tagline: "Slate-blue night" },
 ];
 
 // Back-compat default export (warm) for any file that imports { colors }.

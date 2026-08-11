@@ -12,13 +12,13 @@ import {
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import { api, Message, User } from "../../src/api";
-import { colors, fonts, radius, spacing } from "../../src/theme";
+import { radius, spacing } from "../../src/theme";
 import { useTheme } from "../../src/ThemeContext";
 import Avatar from "../../src/Avatar";
 import { useAuth } from "../../src/AuthContext";
@@ -35,13 +35,16 @@ export default function ChatScreen() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
   const [recordSec, setRecordSec] = useState(0);
+  const loadingRef = useRef(false);
   const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!id || loadingRef.current) return;
+    loadingRef.current = true;
     try {
       const [info, msgs] = await Promise.all([
         api.get<{ other: User | null }>(`/chats/${id}`),
@@ -49,7 +52,11 @@ export default function ChatScreen() {
       ]);
       setChatInfo(info);
       setMessages(msgs);
+      setError(null);
+    } catch {
+      setError("Couldn't load messages — check your connection");
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   }, [id]);
@@ -58,25 +65,34 @@ export default function ChatScreen() {
     load();
   }, [load]);
 
-  // Lightweight polling for new messages
-  useEffect(() => {
-    const t = setInterval(load, 4000);
-    return () => clearInterval(t);
-  }, [load]);
+  // Lightweight polling for new messages — only while this screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      const t = setInterval(load, 4000);
+      return () => clearInterval(t);
+    }, [load]),
+  );
 
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
+      const t = setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 60);
+      return () => clearTimeout(t);
     }
   }, [messages.length]);
 
-  async function send(payload: any) {
+  useEffect(() => () => {
+    if (recordTimer.current) clearInterval(recordTimer.current);
+  }, []);
+
+  async function send(payload: any): Promise<boolean> {
     setSending(true);
     try {
       const m = await api.post<Message>(`/chats/${id}/messages`, payload);
       setMessages((prev) => [...prev, m]);
-    } catch (e) {
-      // ignore for now
+      return true;
+    } catch {
+      setError("Couldn't send — check your connection");
+      return false;
     } finally {
       setSending(false);
     }
@@ -85,8 +101,8 @@ export default function ChatScreen() {
   async function sendText() {
     const t = text.trim();
     if (!t) return;
-    setText("");
-    await send({ chat_id: id, type: "text", text: t });
+    const ok = await send({ chat_id: id, type: "text", text: t });
+    if (ok) setText("");
   }
 
   async function attachImage() {
@@ -98,7 +114,8 @@ export default function ChatScreen() {
       });
       if (res.canceled || !res.assets?.[0]) return;
       const a = res.assets[0];
-      const dataUrl = a.base64 ? `data:image/jpeg;base64,${a.base64}` : a.uri;
+      const mime = a.mimeType || "image/jpeg";
+      const dataUrl = a.base64 ? `data:${mime};base64,${a.base64}` : a.uri;
       await send({
         chat_id: id,
         type: "image",
@@ -147,7 +164,7 @@ export default function ChatScreen() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.iconBtn} testID="chat-back">
-          <Ionicons name="chevron-back" size={22} color={colors.text} />
+          <Ionicons name="chevron-back" size={22} color={c.text} />
         </Pressable>
         <View style={styles.headerCenter}>
           <Avatar name={chatInfo?.other?.name} seed={chatInfo?.other?.id} size={36} />
@@ -163,7 +180,7 @@ export default function ChatScreen() {
           style={styles.iconBtn}
           testID="chat-call"
         >
-          <Ionicons name="call-outline" size={20} color={colors.primaryDark} />
+          <Ionicons name="call-outline" size={20} color={c.primaryDark} />
         </Pressable>
       </View>
 
@@ -189,9 +206,9 @@ export default function ChatScreen() {
         }}
         testID="shared-space-pill"
       >
-        <Ionicons name="sparkles-outline" size={14} color={colors.textSecondary} />
+        <Ionicons name="sparkles-outline" size={14} color={c.textSecondary} />
         <Text style={styles.spacesText}>Start a shared space</Text>
-        <Ionicons name="arrow-forward" size={12} color={colors.primary} />
+        <Ionicons name="arrow-forward" size={12} color={c.primary} />
       </Pressable>
 
       <KeyboardAvoidingView
@@ -199,9 +216,22 @@ export default function ChatScreen() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
         style={{ flex: 1 }}
       >
+        {error ? (
+          <Pressable
+            onPress={() => {
+              setError(null);
+              load();
+            }}
+            style={styles.errorBanner}
+            testID="chat-error"
+          >
+            <Ionicons name="cloud-offline-outline" size={14} color={c.error} />
+            <Text style={styles.errorText}>{error}  ·  Tap to retry</Text>
+          </Pressable>
+        ) : null}
         {loading ? (
           <View style={styles.center}>
-            <ActivityIndicator color={colors.primary} />
+            <ActivityIndicator color={c.primary} />
           </View>
         ) : (
           <FlatList
@@ -235,22 +265,22 @@ export default function ChatScreen() {
               style={styles.recordSend}
               testID="voice-send"
             >
-              <Ionicons name="send" size={16} color={colors.textInverse} />
+              <Ionicons name="send" size={16} color={c.textInverse} />
             </Pressable>
           </View>
         ) : (
           <View style={styles.composer}>
             <Pressable onPress={attachFile} style={styles.attachBtn} testID="attach-file">
-              <Ionicons name="add" size={22} color={colors.text} />
+              <Ionicons name="add" size={22} color={c.text} />
             </Pressable>
             <Pressable onPress={attachImage} style={styles.attachBtn} testID="attach-image">
-              <Ionicons name="image-outline" size={20} color={colors.text} />
+              <Ionicons name="image-outline" size={20} color={c.text} />
             </Pressable>
             <TextInput
               value={text}
               onChangeText={setText}
               placeholder="Message"
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={c.textTertiary}
               style={styles.input}
               multiline
               testID="message-input"
@@ -262,16 +292,15 @@ export default function ChatScreen() {
                 style={styles.sendBtn}
                 testID="send-button"
               >
-                <Ionicons name="arrow-up" size={20} color={colors.textInverse} />
+                <Ionicons name="arrow-up" size={20} color={c.textInverse} />
               </Pressable>
             ) : (
               <Pressable
-                onPressIn={startRecording}
-                onPressOut={() => stopRecording(false)}
+                onPress={startRecording}
                 style={styles.sendBtn}
                 testID="mic-button"
               >
-                <Ionicons name="mic-outline" size={20} color={colors.textInverse} />
+                <Ionicons name="mic-outline" size={20} color={c.textInverse} />
               </Pressable>
             )}
           </View>
@@ -298,7 +327,7 @@ function MessageRow({ msg, mine }: { msg: Message; mine: boolean }) {
           <Text style={styles.msgText}>{msg.text}</Text>
         )}
         {msg.type === "voice" && (
-          <VoiceMessageBubble durationMs={msg.duration_ms || 0} outgoing={mine} />
+          <VoiceMessageBubble durationMs={msg.duration_ms || 0} outgoing={mine} media={msg.media} />
         )}
         {msg.type === "image" && msg.media ? (
           <Image
@@ -418,6 +447,18 @@ const makeStyles = (c: any, f: any) => StyleSheet.create({
     borderRadius: 20,
   },
   msgText: { fontFamily: f.body, fontSize: 15, color: c.text, lineHeight: 22 },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "center",
+    gap: 6,
+    backgroundColor: c.errorBg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 8,
+    borderRadius: 999,
+    marginVertical: spacing.sm,
+  },
+  errorText: { fontFamily: f.bodyMedium, fontSize: 12, color: c.error },
   msgTime: {
     fontFamily: f.body,
     fontSize: 10,

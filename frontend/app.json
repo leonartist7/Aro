@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "Connect",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -23,7 +23,17 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "Connect",
+      "shortName": "Connect",
+      "description": "A quieter place for the conversations you care about.",
+      "themeColor": "#A98C70",
+      "backgroundColor": "#FBF9F6",
+      "lang": "en",
+      "display": "standalone",
+      "orientation": "portrait",
+      "scope": "/",
+      "startUrl": "/"
     },
     "plugins": [
       "expo-router",

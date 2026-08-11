@@ -26,9 +26,14 @@ export default function CreateSpaceScreen() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.get<User[]>("/users").then(setUsers).finally(() => setLoading(false));
+    api
+      .get<User[]>("/users")
+      .then(setUsers)
+      .catch(() => setError("Couldn't load people"))
+      .finally(() => setLoading(false));
   }, []);
 
   function toggle(id: string) {
@@ -41,10 +46,12 @@ export default function CreateSpaceScreen() {
   async function create() {
     if (creating) return;
     setCreating(true);
+    setError(null);
     try {
       const space = await spacesApi.create(name.trim() || null, Array.from(selected));
       router.replace(`/space/${space.id}`);
     } catch {
+      setError("Couldn't create the space — try again");
       setCreating(false);
     }
   }
@@ -78,6 +85,10 @@ export default function CreateSpaceScreen() {
           <View style={{ paddingVertical: spacing.lg, alignItems: "center" }}>
             <ActivityIndicator color={c.primary} />
           </View>
+        ) : error ? (
+          <Pressable onPress={() => setError(null)} style={{ paddingVertical: spacing.lg, alignItems: "center" }}>
+            <Text style={styles.errorText}>{error}</Text>
+          </Pressable>
         ) : (
           <View style={styles.peopleList}>
             {users.map((u) => {
@@ -181,6 +192,7 @@ const makeStyles = (c: Palette, f: any) =>
       marginBottom: spacing.md,
     },
     peopleList: { gap: spacing.sm },
+    errorText: { fontFamily: f.body, fontSize: 14, color: c.textSecondary },
     personRow: {
       flexDirection: "row",
       alignItems: "center",

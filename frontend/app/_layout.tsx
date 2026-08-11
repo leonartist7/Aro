@@ -15,6 +15,7 @@ import {
 } from "@expo-google-fonts/dm-sans";
 import { AuthProvider } from "../src/AuthContext";
 import { ThemeProvider, useTheme } from "../src/ThemeContext";
+import { CallProvider } from "../src/CallContext";
 import { colors } from "../src/theme";
 
 export default function RootLayout() {
@@ -48,7 +49,7 @@ export default function RootLayout() {
 function ThemedStack() {
   const { c } = useTheme();
   return (
-    <>
+    <CallProvider>
       <StatusBar style={c.isDark ? "light" : "dark"} />
       <Stack
         screenOptions={{
@@ -80,7 +81,7 @@ function ThemedStack() {
           options={{ presentation: "modal", animation: "slide_from_bottom" }}
         />
       </Stack>
-    </>
+    </CallProvider>
   );
 }
 

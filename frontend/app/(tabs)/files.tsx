@@ -12,7 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, Message, User } from "../../src/api";
-import { colors, fonts, radius, spacing } from "../../src/theme";
+import { radius, spacing } from "../../src/theme";
 import { useTheme } from "../../src/ThemeContext";
 import { spacesApi, SpaceSession } from "../../src/spaces";
 
@@ -46,10 +46,12 @@ export default function FilesScreen() {
   const [section, setSection] = useState<Section>("Recent");
   const [files, setFiles] = useState<FileMsg[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeCat, setActiveCat] = useState<null | "image" | "file" | "voice">(null);
   const [sessions, setSessions] = useState<SpaceSession[]>([]);
 
   const load = useCallback(async () => {
+    setError(null);
     try {
       const [data, sess] = await Promise.all([
         api.get<FileMsg[]>("/files"),
@@ -57,6 +59,8 @@ export default function FilesScreen() {
       ]);
       setFiles(data);
       setSessions(sess);
+    } catch {
+      setError("Couldn't load your library");
     } finally {
       setLoading(false);
     }
@@ -113,6 +117,11 @@ export default function FilesScreen() {
         <View style={styles.center}>
           <ActivityIndicator color={c.primary} />
         </View>
+      ) : error ? (
+        <Pressable onPress={load} style={styles.center} testID="files-retry">
+          <Text style={styles.errorTitle}>{error}</Text>
+          <Text style={styles.errorRetry}>Tap to retry</Text>
+        </Pressable>
       ) : section === "Categories" && !activeCat ? (
         <ScrollView contentContainerStyle={styles.catGrid}>
           {CATEGORIES.map((cat) => {
@@ -352,6 +361,8 @@ const makeStyles = (c: any, f: any) => StyleSheet.create({
   personMeta: { fontFamily: f.body, fontSize: 12, color: c.textSecondary, marginTop: 2 },
   personFiles: { marginTop: spacing.sm, gap: spacing.sm },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  errorTitle: { fontFamily: f.bodyMedium, fontSize: 15, color: c.textSecondary, textAlign: "center" },
+  errorRetry: { fontFamily: f.body, fontSize: 13, color: c.primary, marginTop: 8 },
   empty: { padding: spacing.xl, alignItems: "center" },
   emptyText: { fontFamily: f.body, color: c.textSecondary },
   backLink: {

@@ -9,6 +9,7 @@ import uuid
 import logging
 import bcrypt
 import jwt
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Literal
 
@@ -17,6 +18,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
+from livekit import api as lkapi
 
 # ---------- Config ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -24,11 +26,22 @@ logger = logging.getLogger("connect")
 
 MONGO_URL = os.environ.get("MONGO_URL", "mongodb://127.0.0.1:27017")
 DB_NAME = os.environ.get("DB_NAME", "connect")
-JWT_SECRET = os.environ.get("JWT_SECRET", "supersecret-dev-token")
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_TTL_MIN = 60 * 24 * 7  # 7 days for mobile convenience
 
-if not os.environ.get("MONGO_URL") or not os.environ.get("DB_NAME") or not os.environ.get("JWT_SECRET"):
+LIVEKIT_URL = os.environ.get("LIVEKIT_URL", "")
+LIVEKIT_API_KEY = os.environ.get("LIVEKIT_API_KEY", "")
+LIVEKIT_API_SECRET = os.environ.get("LIVEKIT_API_SECRET", "")
+
+if not JWT_SECRET or JWT_SECRET == "supersecret-dev-token":
+    raise RuntimeError(
+        "JWT_SECRET is missing or set to the insecure dev default. "
+        "Generate one (python -c 'import secrets; print(secrets.token_hex(32))') "
+        "and set it in backend/.env and in your hosting provider's env vars."
+    )
+
+if not os.environ.get("MONGO_URL") or not os.environ.get("DB_NAME"):
     logger.warning(
         "Missing backend env vars. Using local development defaults from backend/.env.example. "
         "Create backend/.env and set MONGO_URL, DB_NAME, and JWT_SECRET for a stable local backend."
@@ -37,7 +50,19 @@ if not os.environ.get("MONGO_URL") or not os.environ.get("DB_NAME") or not os.en
 client = AsyncIOMotorClient(MONGO_URL)
 db = client[DB_NAME]
 
-app = FastAPI(title="Connect API")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        await seed()
+        logger.info("Seed complete")
+    except Exception as e:
+        logger.exception(f"Seed failed: {e}")
+    yield
+    client.close()
+
+
+app = FastAPI(title="Connect API", lifespan=lifespan)
 api = APIRouter(prefix="/api")
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -267,6 +292,9 @@ async def send_message(chat_id: str, payload: MessageIn, current=Depends(get_cur
     chat = await db.chats.find_one({"id": chat_id, "members": current["id"]})
     if not chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    # rough size guard: reject > 14MB base64 (~10MB binary) to stay under Mongo doc limit
+    if payload.media and len(payload.media) > 14 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Media is too large (max ~10MB)")
     msg = {
         "id": str(uuid.uuid4()),
         "chat_id": chat_id,
@@ -311,7 +339,27 @@ async def list_files(current=Depends(get_current_user)):
     return out
 
 
-# ---------- Calls (mocked) ----------
+# ---------- Calls (signaled via WS) ----------
+def _call_view(c: dict, other: Optional[dict] = None) -> dict:
+    return {
+        "id": c["id"],
+        "members": c.get("members", []),
+        "initiator_id": c.get("initiator_id"),
+        "status": c.get("status"),
+        "duration_sec": c.get("duration_sec", 0),
+        "started_at": c.get("started_at"),
+        "ended_at": c.get("ended_at"),
+        "created_at": c.get("created_at"),
+        "other": serialize_user(other) if other else None,
+    }
+
+
+async def user_active_call(user_id: str) -> Optional[dict]:
+    return await db.calls.find_one(
+        {"members": user_id, "status": {"$in": ["ringing", "active"]}}, {"_id": 0}
+    )
+
+
 @api.get("/calls")
 async def list_calls(current=Depends(get_current_user)):
     calls = await db.calls.find({"members": current["id"]}, {"_id": 0}).sort("created_at", -1).to_list(500)
@@ -319,26 +367,144 @@ async def list_calls(current=Depends(get_current_user)):
     for c in calls:
         other_id = next((m for m in c["members"] if m != current["id"]), None)
         other = await db.users.find_one({"id": other_id}, {"_id": 0, "password_hash": 0}) if other_id else None
-        out.append({**c, "other": serialize_user(other) if other else None})
+        out.append(_call_view(c, other))
     return out
 
 
 @api.post("/calls")
 async def create_call(payload: CallCreateIn, current=Depends(get_current_user)):
+    if payload.other_user_id == current["id"]:
+        raise HTTPException(status_code=400, detail="Cannot call yourself")
     other = await db.users.find_one({"id": payload.other_user_id}, {"_id": 0})
     if not other:
         raise HTTPException(status_code=404, detail="User not found")
+    if await user_active_call(current["id"]):
+        raise HTTPException(status_code=409, detail="You're already in a call")
+    if await user_active_call(payload.other_user_id):
+        raise HTTPException(status_code=409, detail="User is busy")
     call = {
         "id": str(uuid.uuid4()),
         "members": [current["id"], payload.other_user_id],
         "initiator_id": current["id"],
-        "duration_sec": payload.duration_sec,
-        "status": payload.status,
+        "status": "ringing",
+        "duration_sec": 0,
+        "started_at": None,
+        "ended_at": None,
         "created_at": now_iso(),
     }
     await db.calls.insert_one(call)
-    call.pop("_id", None)
-    return call
+    await call_hub.send_to(payload.other_user_id, {
+        "type": "incoming_call",
+        "call": {**call},
+        "from": {"id": current["id"], "name": current["name"]},
+    })
+    return _call_view(call, other)
+
+
+@api.post("/calls/{call_id}/accept")
+async def accept_call(call_id: str, current=Depends(get_current_user)):
+    call = await db.calls.find_one({"id": call_id, "members": current["id"]}, {"_id": 0})
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
+    if call.get("initiator_id") == current["id"]:
+        raise HTTPException(status_code=400, detail="Cannot accept your own call")
+    if call.get("status") != "ringing":
+        raise HTTPException(status_code=409, detail="Call is not ringing")
+    started = now_iso()
+    await db.calls.update_one(
+        {"id": call_id}, {"$set": {"status": "active", "started_at": started, "updated_at": started}}
+    )
+    call["status"] = "active"
+    call["started_at"] = started
+    await call_hub.send_to(call["initiator_id"], {
+        "type": "call_accepted", "call_id": call_id, "status": "active",
+    })
+    return _call_view(call)
+
+
+@api.post("/calls/{call_id}/decline")
+async def decline_call(call_id: str, current=Depends(get_current_user)):
+    call = await db.calls.find_one({"id": call_id, "members": current["id"]}, {"_id": 0})
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
+    if call.get("initiator_id") == current["id"]:
+        raise HTTPException(status_code=400, detail="Cannot decline your own call")
+    ended = now_iso()
+    await db.calls.update_one(
+        {"id": call_id}, {"$set": {"status": "missed", "ended_at": ended, "duration_sec": 0, "updated_at": ended}}
+    )
+    call["status"] = "missed"
+    call["ended_at"] = ended
+    await call_hub.send_to(call["initiator_id"], {"type": "call_declined", "call_id": call_id})
+    return _call_view(call)
+
+
+@api.post("/calls/{call_id}/cancel")
+async def cancel_call(call_id: str, current=Depends(get_current_user)):
+    call = await db.calls.find_one({"id": call_id, "members": current["id"]}, {"_id": 0})
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
+    if call.get("initiator_id") != current["id"]:
+        raise HTTPException(status_code=403, detail="Only the caller can cancel")
+    ended = now_iso()
+    await db.calls.update_one(
+        {"id": call_id}, {"$set": {"status": "missed", "ended_at": ended, "duration_sec": 0, "updated_at": ended}}
+    )
+    call["status"] = "missed"
+    call["ended_at"] = ended
+    await call_hub.send_to(call["members"][-1], {"type": "call_missed", "call_id": call_id})
+    return _call_view(call)
+
+
+@api.post("/calls/{call_id}/end")
+async def end_call(call_id: str, current=Depends(get_current_user)):
+    call = await db.calls.find_one({"id": call_id, "members": current["id"]}, {"_id": 0})
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
+    if call.get("status") != "active":
+        raise HTTPException(status_code=409, detail="Call is not active")
+    ended = now_iso()
+    duration = 0
+    if call.get("started_at"):
+        try:
+            started = datetime.fromisoformat(call["started_at"])
+            duration = max(0, int((datetime.now(timezone.utc) - started).total_seconds()))
+        except Exception:
+            duration = 0
+    await db.calls.update_one(
+        {"id": call_id}, {"$set": {"status": "completed", "ended_at": ended, "duration_sec": duration, "updated_at": ended}}
+    )
+    call["status"] = "completed"
+    call["ended_at"] = ended
+    call["duration_sec"] = duration
+    await call_hub.send_to(call["members"][-1], {"type": "call_ended", "call_id": call_id})
+    return _call_view(call)
+
+
+class CallTokenOut(BaseModel):
+    url: str
+    room: str
+    token: str
+
+
+@api.post("/calls/{call_id}/token")
+async def call_token(call_id: str, current=Depends(get_current_user)):
+    if not LIVEKIT_URL or not LIVEKIT_API_KEY or not LIVEKIT_API_SECRET:
+        raise HTTPException(status_code=503, detail="LiveKit is not configured")
+    call = await db.calls.find_one({"id": call_id, "members": current["id"]}, {"_id": 0})
+    if not call:
+        raise HTTPException(status_code=404, detail="Call not found")
+    if call.get("status") not in ("ringing", "active"):
+        raise HTTPException(status_code=409, detail="Call is not active")
+    room = f"call-{call_id}"
+    token = (
+        lkapi.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        .with_identity(current["id"])
+        .with_name(current["name"])
+        .with_grants(lkapi.VideoGrants(room_join=True, room=room))
+        .to_jwt()
+    )
+    return CallTokenOut(url=LIVEKIT_URL, room=room, token=token)
 
 
 # ---------- Health ----------
@@ -372,11 +538,6 @@ async def seed():
         existing = await db.users.find_one({"email": u["email"]}, {"_id": 0})
         if existing:
             user_ids[u["email"]] = existing["id"]
-            # refresh password to keep in sync
-            await db.users.update_one(
-                {"email": u["email"]},
-                {"$set": {"password_hash": hash_password(u["password"]), "name": u["name"], "bio": u["bio"]}},
-            )
         else:
             doc = {
                 "id": str(uuid.uuid4()),
@@ -410,6 +571,7 @@ async def seed():
         }
         await db.chats.insert_one(chat)
         base_time = datetime.now(timezone.utc) - timedelta(hours=2)
+        last_t = (base_time).isoformat()
         for i, m in enumerate(msgs):
             t = (base_time + timedelta(minutes=i * 3)).isoformat()
             doc = {
@@ -426,7 +588,8 @@ async def seed():
                 "created_at": t,
             }
             await db.messages.insert_one(doc)
-        await db.chats.update_one({"id": chat["id"]}, {"$set": {"updated_at": t}})
+            last_t = t
+        await db.chats.update_one({"id": chat["id"]}, {"$set": {"updated_at": last_t}})
 
     await make_chat(ava, leo, [
         {"sender": leo, "text": "morning ☀️ how did the sketches go?"},
@@ -457,20 +620,6 @@ async def seed():
         "status": "completed",
         "created_at": (datetime.now(timezone.utc) - timedelta(hours=4)).isoformat(),
     })
-
-
-@app.on_event("startup")
-async def on_startup():
-    try:
-        await seed()
-        logger.info("Seed complete")
-    except Exception as e:
-        logger.exception(f"Seed failed: {e}")
-
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    client.close()
 
 
 # ---------- Spaces (Phase 2) ----------
@@ -560,6 +709,41 @@ class SpaceHub:
 hub = SpaceHub()
 
 
+# Call signaling hub — sockets keyed by user id
+class CallHub:
+    def __init__(self):
+        self.clients: dict[str, set[WebSocket]] = {}
+        self.lock = asyncio.Lock()
+
+    async def register(self, user_id: str, ws: WebSocket):
+        async with self.lock:
+            self.clients.setdefault(user_id, set()).add(ws)
+
+    async def unregister(self, user_id: str, ws: WebSocket):
+        async with self.lock:
+            sockets = self.clients.get(user_id)
+            if sockets:
+                sockets.discard(ws)
+                if not sockets:
+                    del self.clients[user_id]
+
+    async def send_to(self, user_id: str, message: dict):
+        sockets = list(self.clients.get(user_id, []))
+        dead = []
+        for ws in sockets:
+            try:
+                await ws.send_json(message)
+            except Exception:
+                dead.append(ws)
+        if dead:
+            async with self.lock:
+                for ws in dead:
+                    self.clients.get(user_id, set()).discard(ws)
+
+
+call_hub = CallHub()
+
+
 def _serialize_space(s: dict, users_by_id: dict | None = None) -> dict:
     members = [users_by_id.get(m) if users_by_id else None for m in s.get("members", [])] if users_by_id else None
     return {
@@ -643,6 +827,13 @@ async def get_audio_upload(upload_id: str, current=Depends(get_current_user)):
     u = await db.audio_uploads.find_one({"id": upload_id}, {"_id": 0})
     if not u:
         raise HTTPException(status_code=404, detail="Upload not found")
+    # only the uploader or members of a space currently using it may fetch
+    if u["uploader_id"] != current["id"]:
+        in_space = await db.spaces.find_one(
+            {"members": current["id"], "content.upload_id": upload_id}, {"_id": 0}
+        )
+        if not in_space:
+            raise HTTPException(status_code=403, detail="Not allowed to access this upload")
     return u
 
 
@@ -855,7 +1046,11 @@ async def set_space_content(space_id: str, payload: SpaceContentIn, current=Depe
 
 @api.post("/spaces/{space_id}/state")
 async def set_space_state(space_id: str, payload: SpaceStateIn, current=Depends(get_current_user)):
-    await _ensure_member(space_id, current["id"])
+    s = await _ensure_member(space_id, current["id"])
+    # only the current host (or creator) may control playback
+    host_id = (s.get("state") or {}).get("host_id") or s.get("creator_id")
+    if host_id and host_id != current["id"]:
+        raise HTTPException(status_code=403, detail="Only the host can control playback")
     state = {
         "is_playing": payload.is_playing,
         "position_sec": max(0.0, float(payload.position_sec)),
@@ -995,13 +1190,54 @@ async def space_ws(websocket: WebSocket, space_id: str, token: str = Query(...))
         })
 
 
+@app.websocket("/api/ws/calls")
+async def call_ws(websocket: WebSocket, token: str = Query(...)):
+    payload = _verify_ws_token(token)
+    if not payload:
+        await websocket.close(code=4401)
+        return
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    if not user:
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    user_id = user["id"]
+    await call_hub.register(user_id, websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                msg = _json.loads(data)
+            except Exception:
+                continue
+            if msg.get("type") == "ping":
+                await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        pass
+    finally:
+        await call_hub.unregister(user_id, websocket)
+
+
 # Mount router & CORS
 app.include_router(api)
+
+# Explicit origins (no wildcard + credentials). Override via CORS_ORIGINS
+# (comma-separated) in env, e.g. Render: https://my-app.vercel.app
+CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()] or [
+    "http://localhost:8081",
+    "http://localhost:19006",
+    "http://127.0.0.1:8081",
+    "http://127.0.0.1:19006",
+]
+# Regex fallback: any Vercel preview/deployment host (dev convenience).
+CORS_ORIGIN_REGEX = os.environ.get("CORS_ORIGIN_REGEX", r"https://.*\.vercel\.app")
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_methods=["*"],
     allow_headers=["*"],
 )

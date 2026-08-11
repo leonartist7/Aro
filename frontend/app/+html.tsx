@@ -12,6 +12,12 @@ export default function Root({ children }: PropsWithChildren) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
         />
+        <meta name="theme-color" content="#A98C70" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/pwa-192.png" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="Connect" />
         {/*
           Disable body scrolling on web to make ScrollView components work correctly.
           If you want to enable scrolling, remove `ScrollViewStyleReset` and
@@ -38,6 +44,17 @@ export default function Root({ children }: PropsWithChildren) {
         }}
       >
         {children}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ("serviceWorker" in navigator) {
+                window.addEventListener("load", function () {
+                  navigator.serviceWorker.register("/sw.js").catch(function () {});
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );

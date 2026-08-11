@@ -1,14 +1,23 @@
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors, fonts, radius, spacing } from "./theme";
+import { createAudioPlayer } from "expo-audio";
+import { useRef, useState, useEffect } from "react";
+import { useTheme } from "./ThemeContext";
+import { Palette, radius, spacing } from "./theme";
 
 export function VoiceMessageBubble({
   durationMs,
   outgoing,
+  media,
 }: {
   durationMs: number;
   outgoing: boolean;
+  media?: string | null;
 }) {
+  const { c, f } = useTheme();
+  const styles = makeStyles(c, f);
+  const playerRef = useRef<any>(null);
+  const [playing, setPlaying] = useState(false);
   const seconds = Math.max(1, Math.round(durationMs / 1000));
   const bars = 22;
   // deterministic pseudo-waveform
@@ -16,10 +25,45 @@ export function VoiceMessageBubble({
     const h = Math.abs(Math.sin(i * 1.7 + seconds)) * 16 + 6;
     return h;
   });
+
+  useEffect(() => () => {
+    try {
+      playerRef.current?.release?.();
+    } catch {}
+  }, []);
+
+  function togglePlay() {
+    if (!media) return;
+    try {
+      if (!playerRef.current) {
+        playerRef.current = createAudioPlayer(media);
+        playerRef.current.onPlaybackStatusUpdate = (s: any) => {
+          if (s?.didJustFinish) setPlaying(false);
+        };
+      }
+      if (playing) {
+        playerRef.current.pause();
+        setPlaying(false);
+      } else {
+        playerRef.current.play();
+        setPlaying(true);
+      }
+    } catch {}
+  }
+
   return (
     <View style={styles.voiceWrap}>
-      <Pressable style={styles.playBtn}>
-        <Ionicons name="play" size={14} color={colors.textInverse} />
+      <Pressable
+        onPress={togglePlay}
+        disabled={!media}
+        style={({ pressed }) => [
+          styles.playBtn,
+          !media && styles.playBtnDisabled,
+          pressed && { transform: [{ scale: 0.92 }] },
+        ]}
+        testID="voice-play"
+      >
+        <Ionicons name={playing ? "pause" : "play"} size={14} color={c.textInverse} />
       </Pressable>
       <View style={styles.waveform}>
         {heights.map((h, i) => (
@@ -30,7 +74,7 @@ export function VoiceMessageBubble({
               height: h,
               borderRadius: 2,
               marginHorizontal: 1.5,
-              backgroundColor: i < bars * 0.4 ? colors.primary : colors.border,
+              backgroundColor: i < bars * 0.4 ? c.primary : c.border,
             }}
           />
         ))}
@@ -49,6 +93,8 @@ export function FilePreviewCard({
   fileSize?: number | null;
   type: "file" | "image";
 }) {
+  const { c, f } = useTheme();
+  const styles = makeStyles(c, f);
   const icon = type === "image" ? "image-outline" : "document-text-outline";
   const sizeLabel = fileSize
     ? fileSize > 1024
@@ -58,7 +104,7 @@ export function FilePreviewCard({
   return (
     <View style={styles.fileWrap}>
       <View style={styles.fileIcon}>
-        <Ionicons name={icon as any} size={22} color={colors.primaryDark} />
+        <Ionicons name={icon as any} size={22} color={c.primaryDark} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.fileName} numberOfLines={1}>
@@ -66,66 +112,68 @@ export function FilePreviewCard({
         </Text>
         <Text style={styles.fileMeta}>{sizeLabel || (type === "image" ? "Image" : "File")}</Text>
       </View>
-      <Ionicons name="arrow-down-outline" size={18} color={colors.textSecondary} />
+      <Ionicons name="arrow-down-outline" size={18} color={c.textSecondary} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  voiceWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-    minWidth: 200,
-  },
-  playBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: spacing.sm,
-  },
-  waveform: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    height: 28,
-  },
-  voiceTime: {
-    marginLeft: spacing.sm,
-    color: colors.textSecondary,
-    fontFamily: fonts.body,
-    fontSize: 12,
-  },
-  fileWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderRadius: radius.md,
-    padding: spacing.sm + 2,
-    minWidth: 220,
-    gap: spacing.sm,
-  },
-  fileIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.sm,
-    backgroundColor: colors.primaryBgSubtle,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  fileName: {
-    color: colors.text,
-    fontFamily: fonts.bodyMedium,
-    fontSize: 14,
-  },
-  fileMeta: {
-    color: colors.textSecondary,
-    fontFamily: fonts.body,
-    fontSize: 12,
-    marginTop: 2,
-  },
-});
+const makeStyles = (c: Palette, f: any) =>
+  StyleSheet.create({
+    voiceWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 6,
+      paddingHorizontal: 4,
+      minWidth: 200,
+    },
+    playBtn: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      backgroundColor: c.primary,
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: spacing.sm,
+    },
+    playBtnDisabled: { opacity: 0.35 },
+    waveform: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+      height: 28,
+    },
+    voiceTime: {
+      marginLeft: spacing.sm,
+      color: c.textSecondary,
+      fontFamily: f.body,
+      fontSize: 12,
+    },
+    fileWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.surface,
+      borderRadius: radius.md,
+      padding: spacing.sm + 2,
+      minWidth: 220,
+      gap: spacing.sm,
+    },
+    fileIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: radius.sm,
+      backgroundColor: c.primaryBgSubtle,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    fileName: {
+      color: c.text,
+      fontFamily: f.bodyMedium,
+      fontSize: 14,
+    },
+    fileMeta: {
+      color: c.textSecondary,
+      fontFamily: f.body,
+      fontSize: 12,
+      marginTop: 2,
+    },
+  });

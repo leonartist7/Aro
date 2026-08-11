@@ -11,19 +11,32 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, User } from "../../src/api";
-import { colors, fonts, radius, spacing } from "../../src/theme";
+import { radius, spacing } from "../../src/theme";
 import { useTheme } from "../../src/ThemeContext";
 import Avatar from "../../src/Avatar";
 
 type Call = {
   id: string;
   duration_sec: number;
-  status: "completed" | "missed" | "outgoing" | "incoming";
+  status: "ringing" | "active" | "completed" | "missed";
   initiator_id: string;
   members: string[];
   created_at: string;
   other: User | null;
 };
+
+function statusLabel(s: Call["status"], d: number) {
+  switch (s) {
+    case "missed":
+      return "Missed";
+    case "ringing":
+      return "No answer";
+    case "active":
+      return "On call";
+    default:
+      return dur(d);
+  }
+}
 
 function dur(s: number) {
   const m = Math.floor(s / 60);
@@ -42,11 +55,15 @@ export default function CallsScreen() {
   const styles = React.useMemo(() => makeStyles(c, f), [c, f]);
   const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setError(null);
     try {
       const data = await api.get<Call[]>("/calls");
       setCalls(data);
+    } catch {
+      setError("Couldn't load your calls");
     } finally {
       setLoading(false);
     }
@@ -68,6 +85,11 @@ export default function CallsScreen() {
         <View style={styles.center}>
           <ActivityIndicator color={c.primary} />
         </View>
+      ) : error ? (
+        <Pressable onPress={load} style={styles.center} testID="calls-retry">
+          <Text style={styles.errorTitle}>{error}</Text>
+          <Text style={styles.errorRetry}>Tap to retry</Text>
+        </Pressable>
       ) : (
         <FlatList
           data={calls}
@@ -99,12 +121,12 @@ export default function CallsScreen() {
                 </Text>
                 <View style={styles.rowSubLine}>
                   <Ionicons
-                    name={item.status === "missed" ? "call-outline" : "checkmark-circle-outline"}
+                    name={item.status === "missed" || item.status === "ringing" ? "call-outline" : "checkmark-circle-outline"}
                     size={14}
-                    color={item.status === "missed" ? c.error : c.success}
+                    color={item.status === "missed" || item.status === "ringing" ? c.error : c.success}
                   />
                   <Text style={styles.rowSub}>
-                    {item.status === "missed" ? "Missed" : `${dur(item.duration_sec)}`}
+                    {statusLabel(item.status, item.duration_sec)}
                     {"  ·  "}
                     {dateLabel(item.created_at)}
                   </Text>
@@ -163,6 +185,8 @@ const makeStyles = (c: any, f: any) => StyleSheet.create({
   },
   sep: { height: 1, backgroundColor: c.border, marginHorizontal: spacing.lg, opacity: 0.5 },
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  errorTitle: { fontFamily: f.bodyMedium, fontSize: 15, color: c.textSecondary, textAlign: "center" },
+  errorRetry: { fontFamily: f.body, fontSize: 13, color: c.primary, marginTop: 8 },
   empty: { padding: spacing.xl, alignItems: "center" },
   emptyTitle: { fontFamily: f.heading, fontSize: 20, color: c.text, marginBottom: 6 },
   emptyText: { fontFamily: f.body, fontSize: 14, color: c.textSecondary, textAlign: "center" },

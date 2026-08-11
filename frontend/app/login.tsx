@@ -13,11 +13,14 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useAuth } from "../src/AuthContext";
-import { colors, fonts, radius, spacing } from "../src/theme";
+import { useTheme } from "../src/ThemeContext";
+import { Palette, radius, spacing } from "../src/theme";
 
 export default function Login() {
   const router = useRouter();
   const { signIn, signUp } = useAuth();
+  const { c, f } = useTheme();
+  const styles = makeStyles(c, f);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("ava@connect.app");
   const [password, setPassword] = useState("connect123");
@@ -73,7 +76,7 @@ export default function Login() {
                 value={name}
                 onChangeText={setName}
                 placeholder="Your name"
-                placeholderTextColor={colors.textTertiary}
+                placeholderTextColor={c.textTertiary}
                 style={styles.input}
                 autoCapitalize="words"
                 testID="name-input"
@@ -83,7 +86,7 @@ export default function Login() {
               value={email}
               onChangeText={setEmail}
               placeholder="Email"
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={c.textTertiary}
               autoCapitalize="none"
               keyboardType="email-address"
               style={styles.input}
@@ -93,7 +96,7 @@ export default function Login() {
               value={password}
               onChangeText={setPassword}
               placeholder="Password"
-              placeholderTextColor={colors.textTertiary}
+              placeholderTextColor={c.textTertiary}
               secureTextEntry
               style={styles.input}
               testID="password-input"
@@ -116,7 +119,7 @@ export default function Login() {
               testID="auth-submit"
             >
               {loading ? (
-                <ActivityIndicator color={colors.textInverse} />
+                <ActivityIndicator color={c.textInverse} />
               ) : (
                 <Text style={styles.ctaText}>
                   {mode === "signin" ? "Sign in" : "Create account"}
@@ -151,8 +154,9 @@ export default function Login() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
+const makeStyles = (c: Palette, f: any) =>
+  StyleSheet.create({
+  safe: { flex: 1, backgroundColor: c.bg },
   container: {
     flexGrow: 1,
     paddingHorizontal: spacing.lg,
@@ -169,50 +173,50 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
   },
   brand: {
-    fontFamily: fonts.heading,
+    fontFamily: f.heading,
     fontSize: 18,
-    color: colors.text,
+    color: c.text,
     letterSpacing: 0.5,
   },
   headline: {
-    fontFamily: fonts.heading,
+    fontFamily: f.heading,
     fontSize: 34,
     lineHeight: 40,
-    color: colors.text,
+    color: c.text,
     letterSpacing: -0.5,
     marginBottom: spacing.sm,
   },
   sub: {
-    fontFamily: fonts.body,
+    fontFamily: f.body,
     fontSize: 16,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     lineHeight: 24,
     marginBottom: spacing.xl,
   },
   form: { gap: spacing.sm + 4 },
   input: {
     height: 56,
-    backgroundColor: colors.surface,
+    backgroundColor: c.surface,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-    fontFamily: fonts.body,
+    fontFamily: f.body,
     fontSize: 16,
-    color: colors.text,
+    color: c.text,
   },
   cta: {
     height: 56,
     borderRadius: radius.md,
-    backgroundColor: colors.primary,
+    backgroundColor: c.primary,
     alignItems: "center",
     justifyContent: "center",
     marginTop: spacing.sm,
   },
   ctaText: {
-    color: colors.textInverse,
-    fontFamily: fonts.bodyBold,
+    color: c.textInverse,
+    fontFamily: f.bodyBold,
     fontSize: 16,
     letterSpacing: 0.2,
   },
@@ -221,33 +225,33 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   switchText: {
-    color: colors.textSecondary,
-    fontFamily: fonts.bodyMedium,
+    color: c.textSecondary,
+    fontFamily: f.bodyMedium,
     fontSize: 14,
   },
   error: {
-    color: colors.error,
-    fontFamily: fonts.bodyMedium,
+    color: c.error,
+    fontFamily: f.bodyMedium,
     fontSize: 14,
     paddingHorizontal: spacing.xs,
   },
   demoHint: {
     marginTop: spacing.xl,
-    backgroundColor: colors.primaryBgSubtle,
+    backgroundColor: c.primaryBgSubtle,
     borderRadius: radius.lg,
     padding: spacing.md,
   },
   demoTitle: {
-    fontFamily: fonts.bodyBold,
+    fontFamily: f.bodyBold,
     fontSize: 13,
-    color: colors.primaryDark,
+    color: c.primaryDark,
     marginBottom: 6,
     letterSpacing: 0.3,
   },
   demoText: {
-    fontFamily: fonts.body,
+    fontFamily: f.body,
     fontSize: 13,
-    color: colors.textSecondary,
+    color: c.textSecondary,
     lineHeight: 20,
   },
 });
